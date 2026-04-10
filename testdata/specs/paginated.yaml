@@ -1,0 +1,218 @@
+openapi: "3.0.3"
+info:
+  title: Paginated API
+  description: API demonstrating various pagination patterns
+  version: "1.0.0"
+
+servers:
+  - url: https://api.example.com/v1
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Item:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+security:
+  - bearerAuth: []
+
+paths:
+  /items/offset:
+    get:
+      operationId: listItemsOffset
+      summary: List items with offset pagination
+      tags:
+        - items
+      x-cliford-pagination:
+        type: offset
+        input:
+          offset:
+            name: offset
+            in: query
+          limit:
+            name: limit
+            in: query
+            default: 20
+        output:
+          results: "$.data"
+          totalCount: "$.meta.total"
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Item"
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      offset:
+                        type: integer
+                      limit:
+                        type: integer
+
+  /items/cursor:
+    get:
+      operationId: listItemsCursor
+      summary: List items with cursor pagination
+      tags:
+        - items
+      x-cliford-pagination:
+        type: cursor
+        input:
+          cursor:
+            name: cursor
+            in: query
+          limit:
+            name: limit
+            in: query
+            default: 20
+        output:
+          results: "$.data"
+          nextCursor: "$.meta.nextCursor"
+      parameters:
+        - name: cursor
+          in: query
+          description: Cursor for next page
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Cursor-paginated items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Item"
+                  meta:
+                    type: object
+                    properties:
+                      nextCursor:
+                        type: string
+                        nullable: true
+                      hasMore:
+                        type: boolean
+
+  /items/link:
+    get:
+      operationId: listItemsLink
+      summary: List items with Link header pagination
+      tags:
+        - items
+      x-cliford-pagination:
+        type: link
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Items with Link header for next page
+          headers:
+            Link:
+              description: RFC 5988 link header with rel=next
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Item"
+
+  /items/{itemId}:
+    get:
+      operationId: getItem
+      summary: Get a single item
+      tags:
+        - items
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Item details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "404":
+          description: Not found
+
+  /items/retry-test:
+    get:
+      operationId: retryTestEndpoint
+      summary: Endpoint for testing retry behavior
+      tags:
+        - items
+      x-cliford-retries:
+        enabled: true
+        maxAttempts: 3
+        statusCodes:
+          - 503
+          - 429
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "503":
+          description: Service temporarily unavailable
+          headers:
+            Retry-After:
+              schema:
+                type: integer

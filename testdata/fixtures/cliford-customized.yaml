@@ -1,0 +1,77 @@
+version: "1"
+spec: ./openapi.yaml
+
+app:
+  name: petstore
+  package: github.com/example/petstore
+  envVarPrefix: PET
+  version: "1.0.0"
+  description: "Petstore CLI"
+
+generation:
+  mode: hybrid
+  sdk:
+    generator: oapi-codegen
+    outputDir: internal/sdk
+    package: sdk
+  cli:
+    outputDir: internal/cli
+    removeStutter: true
+  tui:
+    enabled: true
+    outputDir: internal/tui
+
+auth:
+  interactive: true
+  keychain: true
+  methods:
+    - bearer
+    - apiKey
+
+theme:
+  colors:
+    primary: "#7D56F4"
+    secondary: "#FF6B6B"
+    accent: "#4ECDC4"
+    error: "#FF4444"
+    success: "#44FF44"
+  borders: rounded
+  spinner: dot
+
+features:
+  pagination: true
+  retries:
+    enabled: true
+    maxAttempts: 3
+  customCodeRegions: true
+  documentation:
+    markdown: true
+    llmsTxt: true
+  distribution:
+    goreleaser: true
+    homebrew: false
+
+operations:
+  listPets:
+    cli:
+      aliases:
+        - ls
+        - list
+      group: pets
+  createPet:
+    cli:
+      confirm: true
+      confirmMessage: "Create a new pet?"
+  deletePet:
+    cli:
+      hidden: true
+      confirm: true
+      confirmMessage: "Are you sure? This cannot be undone."
+  listUsers:
+    tui:
+      displayAs: table
+      refreshable: true
+
+hooks:
+  "after:generate":
+    - run: "gofmt -w ."
