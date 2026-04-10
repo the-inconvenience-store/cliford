@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cliford/cliford/internal/pipeline"
+	"github.com/the-inconvenience-store/cliford/internal/pipeline"
 )
 
 func TestGeneratePetstore(t *testing.T) {

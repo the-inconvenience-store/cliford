@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cliford/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
 // MarkdownGenerator produces one Markdown file per command in the generated app.

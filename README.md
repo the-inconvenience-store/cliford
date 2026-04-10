@@ -36,7 +36,7 @@ authentication, and more.
 ### Install
 
 ```bash
-go install github.com/cliford/cliford/cmd/cliford@latest
+go install github.com/the-inconvenience-store/cliford/cmd/cliford@latest
 ```
 
 ### Generate your first app
@@ -115,27 +115,27 @@ operations:
 
 ## Cliford Commands
 
-| Command | Description |
-|---------|-------------|
-| `cliford init` | Create `cliford.yaml` with defaults from your spec |
-| `cliford generate` | Run the full generation pipeline |
-| `cliford validate` | Check spec and config for errors |
-| `cliford diff` | Preview what regeneration would change |
-| `cliford version <type>` | Bump SemVer (auto/patch/minor/major) |
-| `cliford doctor` | Check environment and dependencies |
+| Command                  | Description                                        |
+| ------------------------ | -------------------------------------------------- |
+| `cliford init`           | Create `cliford.yaml` with defaults from your spec |
+| `cliford generate`       | Run the full generation pipeline                   |
+| `cliford validate`       | Check spec and config for errors                   |
+| `cliford diff`           | Preview what regeneration would change             |
+| `cliford version <type>` | Bump SemVer (auto/patch/minor/major)               |
+| `cliford doctor`         | Check environment and dependencies                 |
 
 ## Generated App Commands
 
 Every generated app includes:
 
-| Command | Description |
-|---------|-------------|
-| `<app> <group> <operation>` | API operations grouped by tag |
-| `<app> auth login` | Authenticate (bearer, API key, basic, OAuth) |
-| `<app> auth logout` | Clear stored credentials |
-| `<app> auth status` | Show current auth state (redacted) |
-| `<app> config show/set/get` | Manage app configuration |
-| `<app> completion <shell>` | Shell completions (bash/zsh/fish/powershell) |
+| Command                     | Description                                  |
+| --------------------------- | -------------------------------------------- |
+| `<app> <group> <operation>` | API operations grouped by tag                |
+| `<app> auth login`          | Authenticate (bearer, API key, basic, OAuth) |
+| `<app> auth logout`         | Clear stored credentials                     |
+| `<app> auth status`         | Show current auth state (redacted)           |
+| `<app> config show/set/get` | Manage app configuration                     |
+| `<app> completion <shell>`  | Shell completions (bash/zsh/fish/powershell) |
 
 ### Global Flags
 
@@ -152,17 +152,17 @@ Every generated app includes:
 
 ## Documentation
 
-| Guide | Description |
-|-------|-------------|
-| [Getting Started](docs/getting-started.md) | Install, generate, and run your first app |
-| [Configuration](docs/configuration.md) | cliford.yaml, OpenAPI extensions, per-operation overrides |
-| [Authentication](docs/authentication.md) | Auth methods, keychain storage, profiles |
-| [TUI Mode](docs/tui-mode.md) | Bubbletea TUI, theming, hybrid mode, mode detection |
-| [Pagination & Retries](docs/pagination-retries.md) | Auto-pagination, retry strategies, error handling |
-| [Custom Code Regions](docs/custom-code-regions.md) | Extend generated code that survives regeneration |
-| [Distribution](docs/distribution.md) | GoReleaser, Homebrew, install scripts, SemVer |
-| [Hooks](docs/hooks.md) | Lifecycle and transform hooks |
-| [OpenAPI Extensions](docs/openapi-extensions.md) | All `x-cliford-*` extensions reference |
+| Guide                                              | Description                                               |
+| -------------------------------------------------- | --------------------------------------------------------- |
+| [Getting Started](docs/getting-started.md)         | Install, generate, and run your first app                 |
+| [Configuration](docs/configuration.md)             | cliford.yaml, OpenAPI extensions, per-operation overrides |
+| [Authentication](docs/authentication.md)           | Auth methods, keychain storage, profiles                  |
+| [TUI Mode](docs/tui-mode.md)                       | Bubbletea TUI, theming, hybrid mode, mode detection       |
+| [Pagination & Retries](docs/pagination-retries.md) | Auto-pagination, retry strategies, error handling         |
+| [Custom Code Regions](docs/custom-code-regions.md) | Extend generated code that survives regeneration          |
+| [Distribution](docs/distribution.md)               | GoReleaser, Homebrew, install scripts, SemVer             |
+| [Hooks](docs/hooks.md)                             | Lifecycle and transform hooks                             |
+| [OpenAPI Extensions](docs/openapi-extensions.md)   | All `x-cliford-*` extensions reference                    |
 
 ## Requirements
 

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cliford/cliford/internal/codegen"
-	"github.com/cliford/cliford/internal/pipeline"
+	"github.com/the-inconvenience-store/cliford/internal/codegen"
+	"github.com/the-inconvenience-store/cliford/internal/pipeline"
 )
 
 func TestCustomCodeRegionPreservation(t *testing.T) {

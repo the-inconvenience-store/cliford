@@ -18,7 +18,7 @@ go version
 ## Install Cliford
 
 ```bash
-go install github.com/cliford/cliford/cmd/cliford@latest
+go install github.com/the-inconvenience-store/cliford/cmd/cliford@latest
 ```
 
 Verify it's installed:
@@ -68,13 +68,13 @@ Or if you have `cliford.yaml`, Cliford reads settings from it automatically.
 
 Optional flags:
 
-| Flag | Purpose |
-|------|---------|
-| `--tui` | Generate TUI mode (Bubbletea explorer, forms, views) |
-| `--release` | Generate GoReleaser, install scripts, Homebrew formula |
-| `--custom-regions` | Add custom code region markers |
-| `--verbose` | Show pipeline stage timings |
-| `--dry-run` | Preview without writing files |
+| Flag               | Purpose                                                |
+| ------------------ | ------------------------------------------------------ |
+| `--tui`            | Generate TUI mode (Bubbletea explorer, forms, views)   |
+| `--release`        | Generate GoReleaser, install scripts, Homebrew formula |
+| `--custom-regions` | Add custom code region markers                         |
+| `--verbose`        | Show pipeline stage timings                            |
+| `--dry-run`        | Preview without writing files                          |
 
 ### 4. Build
 

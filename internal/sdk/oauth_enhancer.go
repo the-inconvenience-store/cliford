@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cliford/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
 // OAuthEnhancer generates OAuth 2.0 flow support for the target app.

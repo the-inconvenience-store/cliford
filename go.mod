@@ -1,4 +1,4 @@
-module github.com/cliford/cliford
+module github.com/the-inconvenience-store/cliford
 
 go 1.25.0
 

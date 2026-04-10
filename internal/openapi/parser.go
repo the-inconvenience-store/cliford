@@ -11,7 +11,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 
-	"github.com/cliford/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
 // Parser reads an OpenAPI specification and produces a Registry.

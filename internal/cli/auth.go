@@ -5,15 +5,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cliford/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
 // AuthGenerator produces auth CLI commands for the generated app.
 type AuthGenerator struct {
-	outputDir  string
-	appName    string
-	pkgPath    string
-	schemes    map[string]registry.SecurityScheme
+	outputDir string
+	appName   string
+	pkgPath   string
+	schemes   map[string]registry.SecurityScheme
 }
 
 // NewAuthGenerator creates an auth command generator.

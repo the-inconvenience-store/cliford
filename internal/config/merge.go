@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/cliford/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
 // MergeIntoRegistry applies ClifordConfig operation overrides into the
@@ -65,14 +65,14 @@ func MergeIntoRegistry(cfg *ClifordConfig, reg *registry.Registry) {
 // ApplyToPipeline converts ClifordConfig fields into pipeline.Config fields.
 // Returns the values that the pipeline needs.
 type PipelineOverrides struct {
-	SpecPath         string
-	AppName          string
-	PackageName      string
-	EnvVarPrefix     string
-	AppVersion       string
-	RemoveStutter    bool
-	GenerateTUI      bool
-	GenerateRelease  bool
+	SpecPath          string
+	AppName           string
+	PackageName       string
+	EnvVarPrefix      string
+	AppVersion        string
+	RemoveStutter     bool
+	GenerateTUI       bool
+	GenerateRelease   bool
 	CustomCodeRegions bool
 }
 

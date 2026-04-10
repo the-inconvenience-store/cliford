@@ -5,16 +5,16 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 
-	"github.com/cliford/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
 // CLIExtension holds x-cliford-cli data from an operation.
 type CLIExtension struct {
-	Aliases []string `json:"aliases"`
-	Group   string   `json:"group"`
-	Hidden  bool     `json:"hidden"`
-	Confirm bool     `json:"confirm"`
-	ConfirmMessage string `json:"confirmMessage"`
+	Aliases        []string `json:"aliases"`
+	Group          string   `json:"group"`
+	Hidden         bool     `json:"hidden"`
+	Confirm        bool     `json:"confirm"`
+	ConfirmMessage string   `json:"confirmMessage"`
 }
 
 // TUIExtension holds x-cliford-tui data from an operation.
@@ -25,9 +25,9 @@ type TUIExtension struct {
 
 // PaginationExtension holds x-cliford-pagination data.
 type PaginationExtension struct {
-	Type   string                       `json:"type"`
+	Type   string                        `json:"type"`
 	Input  map[string]PaginationInputExt `json:"input"`
-	Output PaginationOutputExt          `json:"output"`
+	Output PaginationOutputExt           `json:"output"`
 }
 
 // PaginationInputExt describes a pagination input parameter.

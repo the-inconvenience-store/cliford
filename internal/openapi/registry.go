@@ -3,7 +3,7 @@ package openapi
 import (
 	"strings"
 
-	"github.com/cliford/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
 // RegistryBuilder enriches parsed operations with CLI command names,

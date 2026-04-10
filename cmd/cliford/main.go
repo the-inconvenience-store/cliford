@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/cliford/cliford/internal/codegen"
-	"github.com/cliford/cliford/internal/config"
-	"github.com/cliford/cliford/internal/pipeline"
+	"github.com/the-inconvenience-store/cliford/internal/codegen"
+	"github.com/the-inconvenience-store/cliford/internal/config"
+	"github.com/the-inconvenience-store/cliford/internal/pipeline"
 
 	"gopkg.in/yaml.v3"
 )
@@ -61,19 +61,19 @@ that are themselves configurable by their end users.`,
 
 func generateCmd() *cobra.Command {
 	var (
-		specPath    string
-		configPath  string
-		outputDir   string
-		templateDir string
-		appName     string
-		pkgName     string
-		envPrefix   string
+		specPath      string
+		configPath    string
+		outputDir     string
+		templateDir   string
+		appName       string
+		pkgName       string
+		envPrefix     string
 		enableTUI     bool
 		customRegions bool
 		enableRelease bool
 		dryRun        bool
-		force       bool
-		verbose     bool
+		force         bool
+		verbose       bool
 	)
 
 	cmd := &cobra.Command{
@@ -506,4 +506,3 @@ func doctorCmd() *cobra.Command {
 		},
 	}
 }
-

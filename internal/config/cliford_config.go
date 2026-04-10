@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/cliford/cliford/pkg/theme"
+	"github.com/the-inconvenience-store/cliford/pkg/theme"
 )
 
 // ClifordConfig holds the complete configuration for a Cliford generation run.
@@ -46,8 +46,8 @@ type AppConfig struct {
 
 // GenerationConfig controls what gets generated.
 type GenerationConfig struct {
-	Mode string    `mapstructure:"mode"` // pure-cli, pure-tui, hybrid
-	SDK  SDKConfig `mapstructure:"sdk"`
+	Mode string       `mapstructure:"mode"` // pure-cli, pure-tui, hybrid
+	SDK  SDKConfig    `mapstructure:"sdk"`
 	CLI  CLIGenConfig `mapstructure:"cli"`
 	TUI  TUIGenConfig `mapstructure:"tui"`
 }
@@ -117,11 +117,11 @@ type OperationOverride struct {
 
 // OperationCLIOverride holds CLI-specific per-operation config.
 type OperationCLIOverride struct {
-	Aliases  []string `mapstructure:"aliases"`
-	Group    string   `mapstructure:"group"`
-	Hidden   bool     `mapstructure:"hidden"`
-	Confirm  bool     `mapstructure:"confirm"`
-	ConfirmMsg string `mapstructure:"confirmMessage"`
+	Aliases    []string `mapstructure:"aliases"`
+	Group      string   `mapstructure:"group"`
+	Hidden     bool     `mapstructure:"hidden"`
+	Confirm    bool     `mapstructure:"confirm"`
+	ConfirmMsg string   `mapstructure:"confirmMessage"`
 }
 
 // OperationTUIOverride holds TUI-specific per-operation config.

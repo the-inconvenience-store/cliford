@@ -7,15 +7,15 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cliford/cliford/internal/cli"
-	"github.com/cliford/cliford/internal/codegen"
-	"github.com/cliford/cliford/internal/distribution"
-	"github.com/cliford/cliford/internal/docs"
-	"github.com/cliford/cliford/internal/hybrid"
-	"github.com/cliford/cliford/internal/sdk"
-	appTui "github.com/cliford/cliford/internal/tui"
-	"github.com/cliford/cliford/pkg/registry"
-	"github.com/cliford/cliford/pkg/theme"
+	"github.com/the-inconvenience-store/cliford/internal/cli"
+	"github.com/the-inconvenience-store/cliford/internal/codegen"
+	"github.com/the-inconvenience-store/cliford/internal/distribution"
+	"github.com/the-inconvenience-store/cliford/internal/docs"
+	"github.com/the-inconvenience-store/cliford/internal/hybrid"
+	"github.com/the-inconvenience-store/cliford/internal/sdk"
+	appTui "github.com/the-inconvenience-store/cliford/internal/tui"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/pkg/theme"
 )
 
 // StageStatus represents the state of a pipeline stage.
@@ -49,16 +49,16 @@ type Config struct {
 	Verbose     bool
 
 	// Generation options
-	RemoveStutter    bool
-	GenerateTUI      bool
-	GenerateRelease  bool
+	RemoveStutter     bool
+	GenerateTUI       bool
+	GenerateRelease   bool
 	CustomCodeRegions bool
 
 	// App identity
-	AppName       string
-	PackageName   string
-	EnvVarPrefix  string
-	AppVersion    string
+	AppName      string
+	PackageName  string
+	EnvVarPrefix string
+	AppVersion   string
 }
 
 // Pipeline orchestrates the full code generation process.

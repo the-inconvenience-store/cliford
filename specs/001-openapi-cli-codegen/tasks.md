@@ -26,7 +26,7 @@
 
 **Purpose**: Project initialization and Go module structure
 
-- [x] T001 Initialize Go module with `go mod init github.com/cliford/cliford` and create base directory structure per plan.md (`cmd/cliford/`, `internal/`, `pkg/`, `templates/`, `testdata/`, `tests/`)
+- [x] T001 Initialize Go module with `go mod init github.com/the-inconvenience-store/cliford` and create base directory structure per plan.md (`cmd/cliford/`, `internal/`, `pkg/`, `templates/`, `testdata/`, `tests/`)
 - [x] T002 [P] Create reference Petstore OpenAPI spec for testing at `testdata/specs/petstore.yaml` with at least 5 operations across 2 tags, path/query/header/body params, and bearer token security
 - [x] T003 [P] Create reference multi-auth OpenAPI spec at `testdata/specs/complex-auth.yaml` with API key, basic, bearer, and OAuth2 security schemes
 - [x] T004 [P] Create reference paginated OpenAPI spec at `testdata/specs/paginated.yaml` with offset, cursor, and link-header paginated endpoints
@@ -86,7 +86,7 @@
 
 - [x] T025 [US2] Implement cliford.yaml config parsing in `internal/config/cliford_config.go` — Viper-based loading with all ClifordConfig fields from data-model.md, environment variable binding with `CLIFORD_` prefix, defaults for all fields
 - [x] T026 [US2] Implement `x-cliford-*` OpenAPI extension extraction in `internal/openapi/extensions.go` — parse `x-cliford-cli` (aliases, hidden, group, confirm), `x-cliford-tui` (displayAs, refreshable), `x-cliford-pagination`, `x-cliford-retries` from each operation
-- [x] T027 [US2] Implement config merge logic in `internal/config/merge.go` — resolution order: cliford.yaml operation-level > x-cliford-* extensions > cliford.yaml globals > built-in defaults; merge into OperationMeta fields in registry
+- [x] T027 [US2] Implement config merge logic in `internal/config/merge.go` — resolution order: cliford.yaml operation-level > x-cliford-\* extensions > cliford.yaml globals > built-in defaults; merge into OperationMeta fields in registry
 - [x] T028 [US2] Update `internal/cli/generator.go` to apply config overrides — command aliases from `CLIAliases`, hidden commands from `CLIHidden`, custom group names from `CLIGroup`, custom binary name and env prefix
 - [x] T029 [US2] Implement `cliford init` command in `cmd/cliford/main.go` — accept `--spec`, `--name`, `--package`, `--mode` flags; derive defaults from spec (title -> name, etc.); write `cliford.yaml`
 - [x] T030 [US2] Implement `cliford validate` command in `cmd/cliford/main.go` — parse spec + config, run validation, report errors/warnings
@@ -244,6 +244,7 @@
 ### Parallel Opportunities
 
 All user stories US2–US7 can begin in parallel after US1 completes, as they modify different packages:
+
 - US2: `internal/config/`, `internal/openapi/extensions.go`
 - US3: `internal/cli/auth.go`, `templates/cli/keychain.go.tmpl`
 - US4: `internal/tui/`, `internal/hybrid/`, `templates/tui/`

@@ -8,7 +8,7 @@
 ## Install Cliford
 
 ```bash
-go install github.com/cliford/cliford/cmd/cliford@latest
+go install github.com/the-inconvenience-store/cliford/cmd/cliford@latest
 ```
 
 ## Generate Your First CLI App
@@ -31,6 +31,7 @@ cat cliford.yaml
 ```
 
 Key settings to verify:
+
 - `app.name` - your binary name
 - `app.package` - Go module path
 - `app.envVarPrefix` - environment variable prefix
@@ -90,7 +91,7 @@ Then regenerate: `cliford generate`
 
 ```yaml
 generation:
-  mode: hybrid  # or pure-tui
+  mode: hybrid # or pure-tui
 
 tui:
   enabled: true

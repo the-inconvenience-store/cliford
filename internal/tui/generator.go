@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cliford/cliford/pkg/registry"
-	"github.com/cliford/cliford/pkg/theme"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/pkg/theme"
 )
 
 // Generator produces Bubbletea TUI source files for the generated app.

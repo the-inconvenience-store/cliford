@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cliford/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
 // FlagDef describes a CLI flag to be generated for an operation parameter.

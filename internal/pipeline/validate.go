@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cliford/cliford/internal/openapi"
-	"github.com/cliford/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/internal/openapi"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
 // ValidationResult holds the outcome of pre-generation validation.

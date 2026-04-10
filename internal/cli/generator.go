@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cliford/cliford/internal/codegen"
-	"github.com/cliford/cliford/pkg/registry"
+	"github.com/the-inconvenience-store/cliford/internal/codegen"
+	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
 // Generator produces Cobra CLI code from the Operation Registry.
