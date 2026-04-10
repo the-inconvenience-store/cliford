@@ -25,6 +25,7 @@ var (
 
 func main() {
 	if err := rootCmd().Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -81,8 +82,39 @@ func generateCmd() *cobra.Command {
 		Short: "Run the generation pipeline",
 		Long:  "Parse the OpenAPI spec, generate SDK, CLI, TUI, and infrastructure files.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Load cliford.yaml for defaults
+			fileCfg, cfgErr := config.Load(configPath)
+			if cfgErr != nil && configPath != "cliford.yaml" {
+				return fmt.Errorf("load config %s: %w", configPath, cfgErr)
+			}
+
+			// Apply config file values as defaults for unset flags
+			if fileCfg != nil {
+				if specPath == "" && fileCfg.Spec != "" {
+					specPath = fileCfg.Spec
+				}
+				if appName == "app" && fileCfg.App.Name != "" && fileCfg.App.Name != "app" {
+					appName = fileCfg.App.Name
+				}
+				if pkgName == "github.com/example/app" && fileCfg.App.Package != "" && fileCfg.App.Package != "github.com/example/app" {
+					pkgName = fileCfg.App.Package
+				}
+				if envPrefix == "APP" && fileCfg.App.EnvVarPrefix != "" && fileCfg.App.EnvVarPrefix != "APP" {
+					envPrefix = fileCfg.App.EnvVarPrefix
+				}
+				if !cmd.Flags().Changed("tui") && fileCfg.Generation.TUI.Enabled {
+					enableTUI = true
+				}
+				if !cmd.Flags().Changed("custom-regions") && fileCfg.Features.CustomCodeRegions {
+					customRegions = true
+				}
+				if !cmd.Flags().Changed("release") && fileCfg.Features.Distribution.GoReleaser {
+					enableRelease = true
+				}
+			}
+
 			if specPath == "" {
-				return fmt.Errorf("--spec is required")
+				return fmt.Errorf("--spec is required (or set 'spec' in cliford.yaml)")
 			}
 
 			cfg := pipeline.Config{
@@ -101,7 +133,10 @@ func generateCmd() *cobra.Command {
 				EnvVarPrefix:      envPrefix,
 			}
 
-			_ = configPath // Will be used by US2 (config loading)
+			// Apply per-operation overrides from config
+			if fileCfg != nil {
+				cfg.AppVersion = fileCfg.App.Version
+			}
 
 			p := pipeline.New(cfg)
 			ctx := context.Background()
@@ -474,9 +509,16 @@ func doctorCmd() *cobra.Command {
 				return nil
 			})
 
-			check("oapi-codegen importable", func() error {
-				_, err := exec.Command("go", "list", "github.com/oapi-codegen/oapi-codegen/v2/pkg/codegen").Output()
-				return err
+			check("Go modules enabled", func() error {
+				out, err := exec.Command("go", "env", "GO111MODULE").Output()
+				if err != nil {
+					return err
+				}
+				val := strings.TrimSpace(string(out))
+				if val == "off" {
+					return fmt.Errorf("GO111MODULE=off; must be 'on' or ''")
+				}
+				return nil
 			})
 
 			check("cliford.yaml", func() error {

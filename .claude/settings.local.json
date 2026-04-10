@@ -37,7 +37,12 @@
       "Bash(/tmp/cliford-bin doctor:*)",
       "Bash(/tmp/cliford-bin --help)",
       "Bash(ls /Users/samstevens/asot/cliford/internal/*/)",
-      "Bash(wc -l /Users/samstevens/asot/cliford/docs/*.md /Users/samstevens/asot/cliford/README.md)"
+      "Bash(wc -l /Users/samstevens/asot/cliford/docs/*.md /Users/samstevens/asot/cliford/README.md)",
+      "Bash(mkdir -p /tmp/cliford-user-test)",
+      "Bash(rm -rf * .*)",
+      "Bash(/tmp/cliford-bin init:*)",
+      "Read(//private/tmp/cliford-user-test/**)",
+      "Bash(/tmp/petstore-user --help)"
     ]
   }
 }
