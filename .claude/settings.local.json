@@ -35,7 +35,9 @@
       "Bash(go test:*)",
       "Bash(UPDATE_GOLDEN=1 go test:*)",
       "Bash(/tmp/cliford-bin doctor:*)",
-      "Bash(/tmp/cliford-bin --help)"
+      "Bash(/tmp/cliford-bin --help)",
+      "Bash(ls /Users/samstevens/asot/cliford/internal/*/)",
+      "Bash(wc -l /Users/samstevens/asot/cliford/docs/*.md /Users/samstevens/asot/cliford/README.md)"
     ]
   }
 }
