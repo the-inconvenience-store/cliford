@@ -67,12 +67,14 @@ const (
 
 // SchemaMeta holds type information for a parameter or body field.
 type SchemaMeta struct {
-	Type       string // string, integer, number, boolean, array, object
-	Format     string // int32, int64, float, double, date-time, email, etc.
-	Items      *SchemaMeta
-	Properties map[string]SchemaMeta
-	Required   []string
-	Nullable   bool
+	Type        string // string, integer, number, boolean, array, object
+	Format      string // int32, int64, float, double, date-time, email, etc.
+	Items       *SchemaMeta
+	Properties  map[string]SchemaMeta
+	Required    []string
+	Nullable    bool
+	Enum        []any  // Allowed values for this field
+	Description string // Human-readable description
 }
 
 // RequestBodyMeta describes the request body for an operation.

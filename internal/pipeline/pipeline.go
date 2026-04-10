@@ -183,6 +183,8 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 	engine := codegen.NewEngine(p.Config.TemplateDir)
 	cliGen := cli.NewGenerator(engine, p.Config.OutputDir, p.Config.AppName, p.Config.EnvVarPrefix)
 	cliGen.SetCustomCodeRegions(p.Config.CustomCodeRegions)
+	cliGen.SetGenerateTUI(p.Config.GenerateTUI)
+	cliGen.SetPackagePath(p.Config.PackageName)
 	if err := cliGen.Generate(p.Registry); err != nil {
 		return fmt.Errorf("generate CLI commands: %w", err)
 	}

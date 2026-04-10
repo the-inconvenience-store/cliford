@@ -6,6 +6,7 @@ import (
 	goformat "go/format"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/the-inconvenience-store/cliford/internal/codegen"
@@ -17,8 +18,10 @@ type Generator struct {
 	engine            *codegen.Engine
 	outputDir         string
 	appName           string
+	pkgPath           string
 	envPrefix         string
 	customCodeRegions bool
+	generateTUI       bool
 }
 
 // NewGenerator creates a CLI generator.
@@ -34,6 +37,16 @@ func NewGenerator(engine *codegen.Engine, outputDir, appName, envPrefix string) 
 // SetCustomCodeRegions enables custom code region markers in generated output.
 func (g *Generator) SetCustomCodeRegions(enabled bool) {
 	g.customCodeRegions = enabled
+}
+
+// SetGenerateTUI enables TUI launch wiring in the root command.
+func (g *Generator) SetGenerateTUI(enabled bool) {
+	g.generateTUI = enabled
+}
+
+// SetPackagePath sets the Go module path for import statements.
+func (g *Generator) SetPackagePath(pkgPath string) {
+	g.pkgPath = pkgPath
 }
 
 // Generate produces all CLI source files from the registry.
@@ -69,11 +82,18 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("")
 	sb.Line("import (")
 	sb.Line(`	"encoding/json"`)
+	if g.generateTUI {
+		sb.Line(`	"fmt"`)
+	}
 	sb.Line(`	"os"`)
 	sb.Line(`	"strings"`)
 	sb.Line("")
 	sb.Line(`	"github.com/spf13/cobra"`)
 	sb.Line(`	"gopkg.in/yaml.v3"`)
+	if g.generateTUI && g.pkgPath != "" {
+		sb.Line("")
+		sb.Linef("	\"%s/internal/tui\"", g.pkgPath)
+	}
 	sb.Line(")")
 	sb.Line("")
 	sb.Line("var (")
@@ -96,6 +116,17 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("		Version: version,")
 	sb.Line("		SilenceUsage:  true,")
 	sb.Line("		SilenceErrors: true,")
+	if g.generateTUI {
+		sb.Line("		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {")
+		sb.Line("			if tuiMode {")
+		sb.Line("				if err := tui.Run(); err != nil {")
+		sb.Line(`					return fmt.Errorf("TUI error: %w", err)`)
+		sb.Line("				}")
+		sb.Line("				os.Exit(0)")
+		sb.Line("			}")
+		sb.Line("			return nil")
+		sb.Line("		},")
+	}
 	sb.Line("	}")
 	sb.Line("")
 	sb.Line("	pf := root.PersistentFlags()")
@@ -219,12 +250,35 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.OperationMeta, reg *registry.Registry, tagPrefix string) {
 	funcName := tagPrefix + toPascalCase(op.CLICommandName)
 
+	// Build existing param flag name set for collision detection
+	existingParamFlags := make(map[string]bool)
+	for _, p := range op.Parameters {
+		existingParamFlags[p.FlagName] = true
+	}
+
+	// Determine if we have body properties to expand
+	hasBodyProps := op.RequestBody != nil && len(op.RequestBody.Schema.Properties) > 0
+	sortedProps := sortedSchemaKeys(func() map[string]registry.SchemaMeta {
+		if op.RequestBody != nil {
+			return op.RequestBody.Schema.Properties
+		}
+		return nil
+	}())
+
 	sb.Linef("func %sCmd() *cobra.Command {", funcName)
 
-	// Flag variables
+	// Flag variables for path/query/header params
 	for _, p := range op.Parameters {
 		goType := flagGoType(p.Schema)
 		sb.Linef("	var flag%s %s", toPascalCase(p.FlagName), goType)
+	}
+	// Body: individual property flags or fallback JSON
+	if hasBodyProps {
+		for _, propName := range sortedProps {
+			propSchema := op.RequestBody.Schema.Properties[propName]
+			varName := "bodyProp" + toPascalCase(propName)
+			sb.Linef("	var %s %s", varName, flagGoType(propSchema))
+		}
 	}
 	if op.RequestBody != nil {
 		sb.Line("	var bodyJSON string")
@@ -309,7 +363,71 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 
 	// Request body
 	sb.Line("			var reqBody io.Reader")
-	if op.RequestBody != nil {
+	if hasBodyProps {
+		// Merge stdin → --body → individual flags, then validate
+		sb.Line("			{")
+		sb.Line("				bodyFields := make(map[string]any)")
+		sb.Line("				// stdin base layer")
+		sb.Line("				{")
+		sb.Line("					stat, _ := os.Stdin.Stat()")
+		sb.Line("					if stat != nil && (stat.Mode()&os.ModeCharDevice) == 0 {")
+		sb.Line("						if data, err := io.ReadAll(os.Stdin); err == nil && len(data) > 0 {")
+		sb.Line("							_ = json.Unmarshal(data, &bodyFields)")
+		sb.Line("						}")
+		sb.Line("					}")
+		sb.Line("				}")
+		sb.Line("				// --body JSON override")
+		sb.Line("				if bodyJSON != \"\" {")
+		sb.Line("					var override map[string]any")
+		sb.Line("					if err := json.Unmarshal([]byte(bodyJSON), &override); err != nil {")
+		sb.Line(`					    return fmt.Errorf("invalid --body JSON: %w", err)`)
+		sb.Line("					}")
+		sb.Line("					for k, v := range override {")
+		sb.Line("						bodyFields[k] = v")
+		sb.Line("					}")
+		sb.Line("				}")
+		sb.Line("				// individual flags (highest priority)")
+		for _, propName := range sortedProps {
+			propSchema := op.RequestBody.Schema.Properties[propName]
+			flagName := bodyPropFlagName(propName, existingParamFlags)
+			varName := "bodyProp" + toPascalCase(propName)
+			if len(propSchema.Enum) > 0 {
+				enumVals := enumStrings(propSchema.Enum)
+				sb.Linef("				if cmd.Flags().Changed(%q) {", flagName)
+				sb.Linef("					valid%s := []string{%s}", toPascalCase(propName), quoteJoin(enumVals))
+				sb.Line("					found := false")
+				sb.Linef("					for _, v := range valid%s {", toPascalCase(propName))
+				sb.Linef("						if v == %s { found = true; break }", varName)
+				sb.Line("					}")
+				sb.Line("					if !found {")
+				sb.Linef("						return fmt.Errorf(%q+\": must be one of: %%s\", strings.Join(valid%s, \", \"))", propName, toPascalCase(propName))
+				sb.Line("					}")
+				sb.Linef("					bodyFields[%q] = %s", propName, varName)
+				sb.Line("				}")
+			} else {
+				sb.Linef("				if cmd.Flags().Changed(%q) { bodyFields[%q] = %s }", flagName, propName, varName)
+			}
+		}
+		// Validate required fields after merge
+		if len(op.RequestBody.Schema.Required) > 0 {
+			sb.Line("				// validate required fields")
+			for _, reqProp := range op.RequestBody.Schema.Required {
+				flagName := bodyPropFlagName(reqProp, existingParamFlags)
+				sb.Linef("				if _, ok := bodyFields[%q]; !ok {", reqProp)
+				sb.Linef("					return fmt.Errorf(\"required field --%s is missing; use --%s or --body\")", flagName, flagName)
+				sb.Line("				}")
+			}
+		}
+		sb.Line("				if len(bodyFields) > 0 {")
+		sb.Line("					b, err := json.Marshal(bodyFields)")
+		sb.Line("					if err != nil {")
+		sb.Line(`						return fmt.Errorf("marshal body: %w", err)`)
+		sb.Line("					}")
+		sb.Line("					reqBody = bytes.NewReader(b)")
+		sb.Line("				}")
+		sb.Line("			}")
+	} else if op.RequestBody != nil {
+		// No schema properties: accept raw --body JSON or stdin
 		sb.Line("			if bodyJSON != \"\" {")
 		sb.Line("				reqBody = strings.NewReader(bodyJSON)")
 		sb.Line("			} else {")
@@ -409,7 +527,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Line("	}")
 	sb.Line("")
 
-	// Register flags
+	// Register path/query/header flags
 	for _, p := range op.Parameters {
 		goType := flagGoType(p.Schema)
 		flagVar := "flag" + toPascalCase(p.FlagName)
@@ -449,6 +567,8 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 			sb.Linef("	cmd.Flags().BoolVar(&%s, %q, false, %q)", flagVar, p.FlagName, desc)
 		case "[]string":
 			sb.Linef("	cmd.Flags().StringSliceVar(&%s, %q, nil, %q)", flagVar, p.FlagName, desc)
+		case "float64":
+			sb.Linef("	cmd.Flags().Float64Var(&%s, %q, 0, %q)", flagVar, p.FlagName, desc)
 		}
 
 		if p.Required {
@@ -456,7 +576,44 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		}
 	}
 
-	if op.RequestBody != nil {
+	// Register body property flags (individual)
+	if hasBodyProps {
+		sb.Line("")
+		// Build required set
+		requiredSet := make(map[string]bool)
+		for _, r := range op.RequestBody.Schema.Required {
+			requiredSet[r] = true
+		}
+		for _, propName := range sortedProps {
+			propSchema := op.RequestBody.Schema.Properties[propName]
+			flagName := bodyPropFlagName(propName, existingParamFlags)
+			varName := "bodyProp" + toPascalCase(propName)
+			desc := propSchema.Description
+			if len(propSchema.Enum) > 0 {
+				enumDesc := strings.Join(enumStrings(propSchema.Enum), ", ")
+				if desc == "" {
+					desc = "One of: " + enumDesc
+				} else {
+					desc += " (" + enumDesc + ")"
+				}
+			}
+			switch flagGoType(propSchema) {
+			case "string":
+				sb.Linef("	cmd.Flags().StringVar(&%s, %q, %q, %q)", varName, flagName, "", desc)
+			case "int":
+				sb.Linef("	cmd.Flags().IntVar(&%s, %q, 0, %q)", varName, flagName, desc)
+			case "int64":
+				sb.Linef("	cmd.Flags().Int64Var(&%s, %q, 0, %q)", varName, flagName, desc)
+			case "bool":
+				sb.Linef("	cmd.Flags().BoolVar(&%s, %q, false, %q)", varName, flagName, desc)
+			case "[]string":
+				sb.Linef("	cmd.Flags().StringSliceVar(&%s, %q, nil, %q)", varName, flagName, desc)
+			case "float64":
+				sb.Linef("	cmd.Flags().Float64Var(&%s, %q, 0, %q)", varName, flagName, desc)
+			}
+		}
+		sb.Line(`	cmd.Flags().StringVar(&bodyJSON, "body", "", "Request body as JSON (overrides individual flags)")`)
+	} else if op.RequestBody != nil {
 		sb.Line(`	cmd.Flags().StringVar(&bodyJSON, "body", "", "Request body as JSON")`)
 	}
 
@@ -589,6 +746,56 @@ type GroupData struct {
 	Tag        string
 	AppName    string
 	Operations []registry.OperationMeta
+}
+
+// bodyPropFlagName returns the CLI flag name for a body property,
+// prefixing with "body-" only if the name collides with an existing param flag.
+func bodyPropFlagName(propName string, existingParamFlags map[string]bool) string {
+	name := toKebabCase(propName)
+	if existingParamFlags[name] {
+		return "body-" + name
+	}
+	return name
+}
+
+// toKebabCase converts camelCase or PascalCase to kebab-case.
+func toKebabCase(s string) string {
+	var result []byte
+	for i, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				result = append(result, '-')
+			}
+			result = append(result, byte(r+32))
+		} else if r == '_' || r == ' ' {
+			result = append(result, '-')
+		} else {
+			result = append(result, byte(r))
+		}
+	}
+	return string(result)
+}
+
+// sortedSchemaKeys returns the keys of a schema properties map in sorted order.
+func sortedSchemaKeys(m map[string]registry.SchemaMeta) []string {
+	if m == nil {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// enumStrings converts []any enum values to []string.
+func enumStrings(enum []any) []string {
+	result := make([]string, len(enum))
+	for i, e := range enum {
+		result[i] = fmt.Sprintf("%v", e)
+	}
+	return result
 }
 
 func toSnakeCase(s string) string {

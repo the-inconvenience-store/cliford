@@ -319,11 +319,22 @@ func parseOperationSecurity(op *openapi3.Operation, doc *openapi3.T) []registry.
 }
 
 func convertSchema(s *openapi3.Schema) registry.SchemaMeta {
+	typeStr := ""
+	if ts := s.Type.Slice(); len(ts) > 0 {
+		typeStr = ts[0]
+	}
+
 	sm := registry.SchemaMeta{
-		Type:     s.Type.Slice()[0],
-		Format:   s.Format,
-		Nullable: s.Nullable,
-		Required: s.Required,
+		Type:        typeStr,
+		Format:      s.Format,
+		Nullable:    s.Nullable,
+		Required:    s.Required,
+		Description: s.Description,
+	}
+
+	if len(s.Enum) > 0 {
+		sm.Enum = make([]any, len(s.Enum))
+		copy(sm.Enum, s.Enum)
 	}
 
 	if s.Items != nil && s.Items.Value != nil {
