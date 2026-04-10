@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.speakeasy.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:cobra.dev)"
+    ]
+  }
+}
