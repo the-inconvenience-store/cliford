@@ -82,9 +82,7 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("")
 	sb.Line("import (")
 	sb.Line(`	"encoding/json"`)
-	if g.generateTUI {
-		sb.Line(`	"fmt"`)
-	}
+	sb.Line(`	"fmt"`)
 	sb.Line(`	"net/http"`)
 	sb.Line(`	"os"`)
 	sb.Line(`	"strings"`)
@@ -139,7 +137,9 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table")`)
 	sb.Line(`	pf.StringVar(&serverURL, "server", "", "Override API server URL")`)
 	sb.Line(`	pf.StringVar(&timeout, "timeout", "30s", "Request timeout")`)
-	sb.Line(`	pf.BoolVar(&debugMode, "debug", false, "Log request/response to stderr (secrets redacted)")`)
+	sb.Line(`	pf.BoolVarP(&debugMode, "verbose", "v", false, "Log request/response to stderr (secrets redacted)")`)
+	sb.Line(`	_ = pf.Bool("debug", false, "Alias for --verbose")`)
+	sb.Line(`	_ = root.RegisterFlagCompletionFunc("debug", cobra.NoFileCompletions)`)
 	sb.Line(`	pf.BoolVar(&dryRunMode, "dry-run", false, "Display HTTP request without executing")`)
 	sb.Line(`	pf.BoolVarP(&yesMode, "yes", "y", false, "Skip all confirmations, use defaults")`)
 	sb.Line(`	pf.BoolVar(&agentMode, "agent", false, "Force agent mode (structured JSON, no interactive)")`)
@@ -209,6 +209,25 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("		return apiClient")
 	sb.Line("	}")
 	sb.Line(`	return &http.Client{Timeout: 30 * time.Second}`)
+	sb.Line("}")
+	sb.Line("")
+	sb.Line("// VerboseFlag returns a pointer to the verbose/debug mode flag.")
+	sb.Line("// Pass this to client.Options.VerboseFlag to enable request/response logging.")
+	sb.Line("func VerboseFlag() *bool {")
+	sb.Line("	return &debugMode")
+	sb.Line("}")
+	sb.Line("")
+	sb.Line("// promptValue prompts the user for a value on stdin.")
+	sb.Line("// Returns empty string if stdin is not a terminal.")
+	sb.Line("func promptValue(label string) string {")
+	sb.Line("	fi, _ := os.Stdin.Stat()")
+	sb.Line("	if fi != nil && (fi.Mode()&os.ModeCharDevice) == 0 {")
+	sb.Line(`		return "" // not a TTY — skip prompt`)
+	sb.Line("	}")
+	sb.Line("	fmt.Fprint(os.Stderr, label)")
+	sb.Line("	var line string")
+	sb.Line("	fmt.Scanln(&line)")
+	sb.Line("	return strings.TrimSpace(line)")
 	sb.Line("}")
 
 	return writeFormatted(filepath.Join(cliDir, "root.go"), sb.String())
@@ -329,6 +348,32 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	}
 
 	sb.Line("		RunE: func(cmd *cobra.Command, args []string) error {")
+
+	// Prompt for missing required parameters (interactive TTY only)
+	requiredParams := []registry.ParamMeta{}
+	for _, p := range op.Parameters {
+		if p.Required {
+			requiredParams = append(requiredParams, p)
+		}
+	}
+	if len(requiredParams) > 0 {
+		sb.Line("			// Interactive prompts for missing required args")
+		sb.Line("			if !noInteractive && !agentMode {")
+		for _, p := range requiredParams {
+			flagVar := "flag" + toPascalCase(p.FlagName)
+			goType := flagGoType(p.Schema)
+			if goType == "string" {
+				sb.Linef("				if !cmd.Flags().Changed(%q) && %s == \"\" {", p.FlagName, flagVar)
+				sb.Linef("					%s = promptValue(%q)", flagVar, p.FlagName+": ")
+				sb.Linef("					if %s == \"\" {", flagVar)
+				sb.Linef("						return fmt.Errorf(\"required flag --%s not provided\")", p.FlagName)
+				sb.Line("					}")
+				sb.Line("				}")
+			}
+		}
+		sb.Line("			}")
+		sb.Line("")
+	}
 
 	// Apply per-operation timeout via context if configured
 	if op.Timeout != nil {
@@ -522,6 +567,58 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Line("			}")
 	sb.Line("")
 
+	// Pagination: --all fetch loop (early return path for paginated operations)
+	if op.Pagination != nil && op.Pagination.OutputResults != "" {
+		sb.Line(`			fetchAll, _ := cmd.Flags().GetBool("all")`)
+		sb.Line(`			maxPages, _ := cmd.Flags().GetInt("max-pages")`)
+		sb.Line("			if fetchAll {")
+		sb.Line("				if maxPages <= 0 { maxPages = 1000 }")
+		sb.Line("				var allResults []any")
+		sb.Line("				cursor := \"\"")
+		sb.Line("				for page := 0; page < maxPages; page++ {")
+		sb.Line("					pageReq := req.Clone(req.Context())")
+		sb.Line("					if cursor != \"\" {")
+		sb.Linef("						q := pageReq.URL.Query()")
+		sb.Linef("						q.Set(%q, cursor)", op.Pagination.InputCursor.Name)
+		sb.Line("						pageReq.URL.RawQuery = q.Encode()")
+		sb.Line("					}")
+		sb.Line("					resp, err := GetAPIClient().Do(pageReq)")
+		sb.Line("					if err != nil {")
+		sb.Line(`						return fmt.Errorf("request failed on page %d: %w", page+1, err)`)
+		sb.Line("					}")
+		sb.Line("					body, _ := io.ReadAll(resp.Body)")
+		sb.Line("					resp.Body.Close()")
+		sb.Line("					if resp.StatusCode >= 400 {")
+		sb.Line(`						return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))`)
+		sb.Line("					}")
+		sb.Line("					var pageData map[string]any")
+		sb.Line("					if err := json.Unmarshal(body, &pageData); err != nil {")
+		sb.Line("						break")
+		sb.Line("					}")
+		// Extract results array
+		resultField := strings.TrimPrefix(op.Pagination.OutputResults, "$.")
+		sb.Linef("					if items, ok := pageData[%q]; ok {", resultField)
+		sb.Line("						if arr, ok := items.([]any); ok {")
+		sb.Line("							allResults = append(allResults, arr...)")
+		sb.Line("						}")
+		sb.Line("					}")
+		// Extract next cursor
+		if op.Pagination.OutputNextKey != "" {
+			nextField := strings.TrimPrefix(op.Pagination.OutputNextKey, "$.")
+			sb.Linef("					if next, ok := pageData[%q]; ok && next != nil {", nextField)
+			sb.Line("						if s, ok := next.(string); ok && s != \"\" {")
+			sb.Line("							cursor = s")
+			sb.Line("							continue")
+			sb.Line("						}")
+			sb.Line("					}")
+		}
+		sb.Line("					break // No more pages")
+		sb.Line("				}")
+		sb.Line("				return FormatOutput(allResults, outputFormat)")
+		sb.Line("			}")
+		sb.Line("")
+	}
+
 	// Execute using shared API client (pre-configured with auth/retry/verbose transports)
 	sb.Line("			resp, err := GetAPIClient().Do(req)")
 	sb.Line("			if err != nil {")
@@ -663,6 +760,17 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		sb.Line("	// Pagination flags")
 		sb.Line(`	cmd.Flags().Bool("all", false, "Fetch all pages")`)
 		sb.Line(`	cmd.Flags().Int("max-pages", 0, "Maximum pages to fetch (with --all, 0=unlimited)")`)
+		switch op.Pagination.Type {
+		case registry.PaginationCursor:
+			sb.Linef("	cmd.Flags().String(%q, \"\", \"Pagination cursor for next page\")", op.Pagination.InputCursor.Name)
+		case registry.PaginationOffset:
+			sb.Linef("	cmd.Flags().Int(%q, 0, \"Offset for pagination\")", op.Pagination.InputCursor.Name)
+		case registry.PaginationPage:
+			sb.Linef("	cmd.Flags().Int(%q, 1, \"Page number\")", op.Pagination.InputCursor.Name)
+		}
+		if op.Pagination.InputLimit.Name != "" {
+			sb.Linef("	cmd.Flags().Int(%q, %d, \"Number of items per page\")", op.Pagination.InputLimit.Name, op.Pagination.DefaultLimit)
+		}
 	}
 
 	// Retry flags on all commands

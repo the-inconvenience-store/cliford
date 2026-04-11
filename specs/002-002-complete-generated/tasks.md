@@ -93,10 +93,10 @@
 
 **Independent Test**: Run any generated list command with `--verbose`. Confirm method, URL, and `Authorization: [REDACTED]` on stderr.
 
-- [ ] T020 Add `--verbose`/`-v` persistent flag to generated root command in `internal/cli/generator.go`
-- [ ] T021 Create `templates/sdk/verbose_transport.go.tmpl` generating `VerboseTransport` that wraps any `http.RoundTripper` and prints request/response to stderr when `--verbose` is set
-- [ ] T022 Implement header redaction in `VerboseTransport` template: redact `Authorization`, `X-Api-Key`, and any header whose name contains `secret`, `token`, `key`, or `password` (case-insensitive) — replace values with `[REDACTED]`
-- [ ] T023 Wire `VerboseTransport` as outermost layer in `templates/sdk/factory.go.tmpl` (wrapping `AuthTransport` chain)
+- [x] T020 Add `--verbose`/`-v` persistent flag to generated root command in `internal/cli/generator.go`
+- [x] T021 Create `templates/sdk/verbose_transport.go.tmpl` generating `VerboseTransport` that wraps any `http.RoundTripper` and prints request/response to stderr when `--verbose` is set
+- [x] T022 Implement header redaction in `VerboseTransport` template: redact `Authorization`, `X-Api-Key`, and any header whose name contains `secret`, `token`, `key`, or `password` (case-insensitive) — replace values with `[REDACTED]`
+- [x] T023 Wire `VerboseTransport` as outermost layer in `templates/sdk/factory.go.tmpl` (wrapping `AuthTransport` chain)
 
 **Checkpoint**: `--verbose` on a generated command prints request line to stderr; auth header value is `[REDACTED]`.
 
@@ -108,9 +108,9 @@
 
 **Independent Test**: Run a DELETE command without `--id`. App prompts `id: `. Provide value. Request proceeds.
 
-- [ ] T024 Create `internal/cli/prompts.go` to generate per-command `promptMissingArgs()` helper functions into `templates/cli/prompts.go.tmpl`
-- [ ] T025 Wire `promptMissingArgs()` at start of each generated `RunE` function in `internal/cli/generator.go` — called before request execution
-- [ ] T026 Add TTY detection in generated prompts template (`templates/cli/prompts.go.tmpl`): call `term.IsTerminal(int(os.Stdin.Fd()))` and skip prompt + print Cobra usage error when stdin is not a TTY
+- [x] T024 Create `internal/cli/prompts.go` to generate per-command `promptMissingArgs()` helper functions into `templates/cli/prompts.go.tmpl`
+- [x] T025 Wire `promptMissingArgs()` at start of each generated `RunE` function in `internal/cli/generator.go` — called before request execution
+- [x] T026 Add TTY detection in generated prompts template (`templates/cli/prompts.go.tmpl`): call `term.IsTerminal(int(os.Stdin.Fd()))` and skip prompt + print Cobra usage error when stdin is not a TTY
 
 **Checkpoint**: Running command without required `--id` in a TTY shows `id: ` prompt; running with stdin redirected from file prints usage error.
 
@@ -122,10 +122,10 @@
 
 **Independent Test**: Run `list --all` against a paginated mock. Confirm all items across all pages appear in stdout.
 
-- [ ] T027 Complete `internal/sdk/pagination_enhancer.go` to generate typed `--page-token`, `--offset`, `--page`, `--limit` flags from `OperationMeta.Pagination` config
-- [ ] T028 Add `--all` flag to generated commands where `OperationMeta.Pagination != nil` in `internal/cli/generator.go`
-- [ ] T029 Implement `--all` page-fetch loop in `templates/cli/paginate.go.tmpl`: drive `PageIterator`, accumulate results across pages, output combined slice
-- [ ] T030 Wire pagination flags into generated `RunE` functions in `internal/cli/generator.go` — pass current page params to SDK call, update state from response
+- [x] T027 Complete `internal/sdk/pagination_enhancer.go` to generate typed `--page-token`, `--offset`, `--page`, `--limit` flags from `OperationMeta.Pagination` config
+- [x] T028 Add `--all` flag to generated commands where `OperationMeta.Pagination != nil` in `internal/cli/generator.go`
+- [x] T029 Implement `--all` page-fetch loop in `templates/cli/paginate.go.tmpl`: drive `PageIterator`, accumulate results across pages, output combined slice
+- [x] T030 Wire pagination flags into generated `RunE` functions in `internal/cli/generator.go` — pass current page params to SDK call, update state from response
 - [ ] T030a [US6] Wire `features.pagination.enabled` and `features.pagination.default_page_size` from FeaturesConfig into pagination flag generation in `templates/cli/paginate.go.tmpl` so page size is overridable at runtime via Viper config
 
 **Checkpoint**: `--all` on a 3-page mock returns full result count; `--page-token <cursor>` fetches correct page.
@@ -138,10 +138,10 @@
 
 **Independent Test**: Configure `client_id`/`client_secret`. Run protected operation. Confirm token fetch occurs, is cached (second call skips fetch), and is used in `Authorization` header.
 
-- [ ] T031 Create `internal/sdk/oauth_enhancer.go` to generate `OAuthTokenSource` using `clientcredentials.Config` from `golang.org/x/oauth2/clientcredentials`
-- [ ] T032 [P] Generate `ReuseTokenSource` wrapper with in-memory cache (`sync.Mutex` + `*oauth2.Token`) in `templates/sdk/oauth_source.go.tmpl`
-- [ ] T033 Wire OAuth2 token source into `AuthTransport` for `oauth2` scheme type in `templates/sdk/factory.go.tmpl` — use `oauth2.Transport` wrapping the retry transport
-- [ ] T034 Integrate token storage/retrieval with keychain in generated resolver: store fetched token under `account=<SCHEME>_TOKEN`; proactively refresh 60s before `ExpiresAt`
+- [x] T031 Create `internal/sdk/oauth_enhancer.go` to generate `OAuthTokenSource` using `clientcredentials.Config` from `golang.org/x/oauth2/clientcredentials`
+- [x] T032 [P] Generate `ReuseTokenSource` wrapper with in-memory cache (`sync.Mutex` + `*oauth2.Token`) in `templates/sdk/oauth_source.go.tmpl`
+- [x] T033 Wire OAuth2 token source into `AuthTransport` for `oauth2` scheme type in `templates/sdk/factory.go.tmpl` — use `oauth2.Transport` wrapping the retry transport
+- [x] T034 Integrate token storage/retrieval with keychain in generated resolver: store fetched token under `account=<SCHEME>_TOKEN`; proactively refresh 60s before `ExpiresAt`
 
 **Checkpoint**: Token fetched on first request; reused on second; refreshed when `ExpiresAt - 60s` passes.
 
@@ -153,11 +153,11 @@
 
 **Independent Test**: Register a shell hook that appends to a log file. Run any operation. Confirm log entry written.
 
-- [ ] T035 Complete `internal/hooks/` shell hook executor: exec configured command, write `HookContext` JSON to stdin, treat non-zero exit as abort
-- [ ] T036 [P] Implement go-plugin hook executor in `internal/hooks/plugin_runner.go` using `hashicorp/go-plugin` gRPC transport — load plugin binary from configured path
-- [ ] T037 [P] Add `HookContext` struct and JSON tags to `pkg/registry/types.go` (fields: OperationID, Method, URL, Headers, Body, Timestamp, StatusCode, ResponseHeaders, ResponseBody, ElapsedMs, Error)
-- [ ] T038 Wire hook execution in generated `templates/sdk/factory.go.tmpl`: call `BeforeRequest` hooks before `RoundTrip`; call `AfterResponse` hooks after response received
-- [ ] T039 Wire `FeaturesConfig.Hooks.Enabled` Viper toggle in generated `templates/cli/main.go.tmpl` — skip hook runner construction when hooks disabled
+- [x] T035 Complete `internal/hooks/` shell hook executor: exec configured command, write `HookContext` JSON to stdin, treat non-zero exit as abort
+- [x] T036 [P] Implement go-plugin hook executor in `internal/hooks/plugin_runner.go` using `hashicorp/go-plugin` gRPC transport — load plugin binary from configured path
+- [x] T037 [P] Add `HookContext` struct and JSON tags to `pkg/registry/types.go` (fields: OperationID, Method, URL, Headers, Body, Timestamp, StatusCode, ResponseHeaders, ResponseBody, ElapsedMs, Error)
+- [x] T038 Wire hook execution in generated `templates/sdk/factory.go.tmpl`: call `BeforeRequest` hooks before `RoundTrip`; call `AfterResponse` hooks after response received
+- [x] T039 Wire `FeaturesConfig.Hooks.Enabled` Viper toggle in generated `templates/cli/main.go.tmpl` — skip hook runner construction when hooks disabled
 
 **Checkpoint**: Shell hook script receives valid JSON on stdin; non-zero exit aborts request with message from stderr.
 

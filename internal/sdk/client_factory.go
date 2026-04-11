@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"%s/internal/auth"
+	"%s/internal/hooks"
 	"%s/internal/sdk"
 )
 
@@ -58,8 +59,18 @@ type Options struct {
 	// RetryEnabled controls whether retry middleware is active.
 	RetryEnabled bool
 
-	// Verbose enables request/response logging to stderr.
-	Verbose bool
+	// VerboseFlag is a pointer to the --verbose CLI flag.
+	// When non-nil and true, request/response details are logged to stderr.
+	VerboseFlag *bool
+
+	// HooksEnabled controls whether before/after request hooks are active.
+	HooksEnabled bool
+
+	// BeforeRequestHooks are the configured before_request hooks.
+	BeforeRequestHooks []hooks.HookDef
+
+	// AfterResponseHooks are the configured after_response hooks.
+	AfterResponseHooks []hooks.HookDef
 }
 
 // DefaultOptions returns sensible default factory options.
@@ -102,6 +113,23 @@ func NewHTTPClient(opts Options) *http.Client {
 		}
 	}
 
+	// Layer 3: Hooks (before_request / after_response)
+	if opts.HooksEnabled && (len(opts.BeforeRequestHooks) > 0 || len(opts.AfterResponseHooks) > 0) {
+		runner := hooks.NewRunner(opts.BeforeRequestHooks, opts.AfterResponseHooks)
+		transport = &hooksTransport{
+			base:   transport,
+			runner: runner,
+		}
+	}
+
+	// Layer 4 (outermost): Verbose logging
+	if opts.VerboseFlag != nil {
+		transport = &sdk.VerboseTransport{
+			Base:    transport,
+			Enabled: opts.VerboseFlag,
+		}
+	}
+
 	return &http.Client{
 		Transport: transport,
 		Timeout:   opts.BaseTimeout,
@@ -120,7 +148,24 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	return t.base.RoundTrip(req)
 }
-`, g.pkgPath, g.pkgPath)
+
+// hooksTransport wraps an http.RoundTripper with before/after request hooks.
+type hooksTransport struct {
+	base   http.RoundTripper
+	runner *hooks.Runner
+}
+
+func (t *hooksTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := t.runner.RunBefore(req); err != nil {
+		return nil, err
+	}
+	start := time.Now()
+	resp, err := t.base.RoundTrip(req)
+	elapsed := time.Since(start)
+	t.runner.RunAfter(req, resp, elapsed, err)
+	return resp, err
+}
+`, g.pkgPath, g.pkgPath, g.pkgPath)
 
 	return os.WriteFile(filepath.Join(clientDir, "factory.go"), []byte(code), 0o644)
 }

@@ -3,6 +3,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -42,7 +43,9 @@ func RootCmd(appName string, version string) *cobra.Command {
 	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table")
 	pf.StringVar(&serverURL, "server", "", "Override API server URL")
 	pf.StringVar(&timeout, "timeout", "30s", "Request timeout")
-	pf.BoolVar(&debugMode, "debug", false, "Log request/response to stderr (secrets redacted)")
+	pf.BoolVarP(&debugMode, "verbose", "v", false, "Log request/response to stderr (secrets redacted)")
+	_ = pf.Bool("debug", false, "Alias for --verbose")
+	_ = root.RegisterFlagCompletionFunc("debug", cobra.NoFileCompletions)
 	pf.BoolVar(&dryRunMode, "dry-run", false, "Display HTTP request without executing")
 	pf.BoolVarP(&yesMode, "yes", "y", false, "Skip all confirmations, use defaults")
 	pf.BoolVar(&agentMode, "agent", false, "Force agent mode (structured JSON, no interactive)")
@@ -92,4 +95,23 @@ func GetAPIClient() *http.Client {
 		return apiClient
 	}
 	return &http.Client{Timeout: 30 * time.Second}
+}
+
+// VerboseFlag returns a pointer to the verbose/debug mode flag.
+// Pass this to client.Options.VerboseFlag to enable request/response logging.
+func VerboseFlag() *bool {
+	return &debugMode
+}
+
+// promptValue prompts the user for a value on stdin.
+// Returns empty string if stdin is not a terminal.
+func promptValue(label string) string {
+	fi, _ := os.Stdin.Stat()
+	if fi != nil && (fi.Mode()&os.ModeCharDevice) == 0 {
+		return "" // not a TTY — skip prompt
+	}
+	fmt.Fprint(os.Stderr, label)
+	var line string
+	fmt.Scanln(&line)
+	return strings.TrimSpace(line)
 }

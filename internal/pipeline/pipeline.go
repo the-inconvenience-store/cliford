@@ -214,7 +214,19 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 		return fmt.Errorf("generate redaction: %w", err)
 	}
 
-	// Generate HTTP client factory (layered transport: auth → retry → default)
+	// Generate verbose transport
+	verboseGen := sdk.NewVerboseEnhancer(p.Config.OutputDir, p.Config.PackageName)
+	if err := verboseGen.Generate(); err != nil {
+		return fmt.Errorf("generate verbose transport: %w", err)
+	}
+
+	// Generate runtime hooks (before_request / after_response)
+	hooksGen := sdk.NewHooksEnhancer(p.Config.OutputDir, p.Config.PackageName)
+	if err := hooksGen.Generate(); err != nil {
+		return fmt.Errorf("generate hooks runner: %w", err)
+	}
+
+	// Generate HTTP client factory (layered transport: verbose → auth → retry → default)
 	factoryGen := sdk.NewClientFactoryGenerator(p.Config.OutputDir, p.Config.AppName, p.Config.EnvVarPrefix, p.Config.PackageName)
 	if err := factoryGen.Generate(); err != nil {
 		return fmt.Errorf("generate client factory: %w", err)
@@ -341,6 +353,7 @@ func main() {
 	resolver := auth.NewResolver("%s", auth.DefaultSchemes())
 	opts := client.DefaultOptions()
 	opts.AuthResolver = resolver
+	opts.VerboseFlag = cli.VerboseFlag()
 	cli.SetAPIClient(client.NewHTTPClient(opts))
 
 	rootCmd := cli.RootCmd("%s", fmt.Sprintf("%%s (commit: %%s, built: %%s)", version, commit, date))
@@ -379,6 +392,8 @@ go 1.22
 require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/oauth2 v0.36.0
 	gopkg.in/yaml.v3 v3.0.1%s
 )
 `, p.Config.PackageName, charmDeps)

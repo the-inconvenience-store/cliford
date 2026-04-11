@@ -202,6 +202,22 @@ type ServerVariable struct {
 	Enum        []string
 }
 
+// HookContext is the data passed to before/after request hooks.
+// Serialized as JSON for shell hooks; passed as gRPC message for go-plugin hooks.
+type HookContext struct {
+	OperationID     string            `json:"operation_id"`
+	Method          string            `json:"method"`
+	URL             string            `json:"url"`
+	Headers         map[string]string `json:"headers"`
+	Body            []byte            `json:"body,omitempty"`
+	Timestamp       string            `json:"timestamp"`
+	StatusCode      int               `json:"status_code,omitempty"`
+	ResponseHeaders map[string]string `json:"response_headers,omitempty"`
+	ResponseBody    []byte            `json:"response_body,omitempty"`
+	ElapsedMs       int64             `json:"elapsed_ms,omitempty"`
+	Error           string            `json:"error,omitempty"`
+}
+
 // Registry holds all parsed and enriched operation metadata.
 type Registry struct {
 	Title           string
