@@ -217,9 +217,13 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg *registry.Registry, cliDir string) error {
 	// Determine which imports are needed
 	needsBytes := false
+	needsContext := false
 	for _, op := range ops {
 		if op.RequestBody != nil {
 			needsBytes = true
+		}
+		if op.Timeout != nil {
+			needsContext = true
 		}
 	}
 
@@ -231,7 +235,9 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 	if needsBytes {
 		sb.Line(`	"bytes"`)
 	}
-	sb.Line(`	"context"`)
+	if needsContext {
+		sb.Line(`	"context"`)
+	}
 	sb.Line(`	"encoding/json"`)
 	sb.Line(`	"fmt"`)
 	sb.Line(`	"io"`)
@@ -239,6 +245,9 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 	sb.Line(`	"net/url"`)
 	sb.Line(`	"os"`)
 	sb.Line(`	"strings"`)
+	if needsContext {
+		sb.Line(`	"time"`)
+	}
 	sb.Line("")
 	sb.Line(`	"github.com/spf13/cobra"`)
 	sb.Line(")")
@@ -320,6 +329,13 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	}
 
 	sb.Line("		RunE: func(cmd *cobra.Command, args []string) error {")
+
+	// Apply per-operation timeout via context if configured
+	if op.Timeout != nil {
+		sb.Linef("			ctx, cancel := context.WithTimeout(cmd.Context(), %d*time.Nanosecond)", op.Timeout.Nanoseconds())
+		sb.Line("			defer cancel()")
+	}
+	sb.Line("")
 
 	// Determine base URL
 	defaultURL := "http://localhost:8080"
@@ -463,8 +479,12 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	}
 	sb.Line("")
 
-	// Create request
-	sb.Linef("			req, err := http.NewRequestWithContext(context.Background(), %q, reqURL.String(), reqBody)", op.Method)
+	// Create request with context (carries per-operation timeout if set)
+	if op.Timeout != nil {
+		sb.Linef("			req, err := http.NewRequestWithContext(ctx, %q, reqURL.String(), reqBody)", op.Method)
+	} else {
+		sb.Linef("			req, err := http.NewRequestWithContext(cmd.Context(), %q, reqURL.String(), reqBody)", op.Method)
+	}
 	sb.Line("			if err != nil {")
 	sb.Line(`				return fmt.Errorf("create request: %w", err)`)
 	sb.Line("			}")

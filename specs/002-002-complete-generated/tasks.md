@@ -45,12 +45,12 @@
 
 **Independent Test**: Set `PETSTORE_BEARERAUTH_TOKEN=test123`. Run any generated list command with `--verbose`. Confirm `Authorization: Bearer test123` appears in stderr (redacted to `[REDACTED]` in actual output — token presence confirmed via `auth status` command).
 
-- [ ] T009 Complete `internal/cli/auth.go` credential resolver to implement 5-tier chain: CLI flags → env var (`<APP>_<SCHEME>_<TYPE>`) → zalando/go-keyring keychain → AES-256-GCM encrypted file (`~/.config/<app>/credentials.enc`) → plain-text config file
-- [ ] T010 [P] Implement custom AES-256-GCM encrypted-file fallback store in `templates/cli/auth_store.go.tmpl` (activated when `go-keyring` returns an error)
-- [ ] T011 [P] Generate `<APP>_<SCHEME_NAME>_<CREDENTIAL_TYPE>` env var names from registry `SecurityScheme` metadata in `internal/cli/auth.go`
-- [ ] T012 [US1] Generate clear auth error messages per FR-003 in `internal/cli/auth.go`: print scheme name, type, and exact env var name when credentials missing
-- [ ] T013 Wire `CredentialResolver` output into `AuthTransport` in `templates/sdk/factory.go.tmpl` — inject correct header per scheme type (Bearer, Basic Base64, apiKey header/query)
-- [ ] T014 Update golden files after auth wiring: `UPDATE_GOLDEN=1 go test ./tests/unit/... -count=1`
+- [x] T009 Complete `internal/cli/auth.go` credential resolver to implement 5-tier chain: CLI flags → env var (`<APP>_<SCHEME>_<TYPE>`) → zalando/go-keyring keychain → AES-256-GCM encrypted file (`~/.config/<app>/credentials.enc`) → plain-text config file
+- [x] T010 [P] Implement custom AES-256-GCM encrypted-file fallback store in `templates/cli/auth_store.go.tmpl` (activated when `go-keyring` returns an error)
+- [x] T011 [P] Generate `<APP>_<SCHEME_NAME>_<CREDENTIAL_TYPE>` env var names from registry `SecurityScheme` metadata in `internal/cli/auth.go`
+- [x] T012 [US1] Generate clear auth error messages per FR-003 in `internal/cli/auth.go`: print scheme name, type, and exact env var name when credentials missing
+- [x] T013 Wire `CredentialResolver` output into `AuthTransport` in `templates/sdk/factory.go.tmpl` — inject correct header per scheme type (Bearer, Basic Base64, apiKey header/query)
+- [x] T014 Update golden files after auth wiring: `UPDATE_GOLDEN=1 go test ./tests/unit/... -count=1`
 - [ ] T014a [P] [US1] Add unit test for `CredentialResolver` 5-tier chain in `tests/unit/auth_resolver_test.go`: all tiers exercised, priority order verified, missing credential error message validated — write test first, confirm it fails before T009 implementation
 
 **Checkpoint**: Generated app for a Bearer-auth spec sends correct `Authorization` header when env var is set; prints actionable error when missing.
@@ -63,9 +63,9 @@
 
 **Independent Test**: Point generated CLI at a mock server returning 503 twice then 200. Run a GET operation. Command succeeds after retries.
 
-- [ ] T015 Complete `internal/sdk/retry_enhancer.go` to apply defaults (3 attempts, 1s initial interval, 30s max interval, 2.0 exponent, 25% jitter) when `op.Retries` is nil in `OperationMeta`; treat `MaxElapsedTime == 0` as no time limit
-- [ ] T016 Confirm `RetryTransport` is wired as inner transport layer in `templates/sdk/factory.go.tmpl` (below `AuthTransport`)
-- [ ] T017 Verify `internal/sdk/retry_enhancer.go` non-retriable bypass: status codes 400, 401, 403, 404 must not trigger retry
+- [x] T015 Complete `internal/sdk/retry_enhancer.go` to apply defaults (3 attempts, 1s initial interval, 30s max interval, 2.0 exponent, 25% jitter) when `op.Retries` is nil in `OperationMeta`; treat `MaxElapsedTime == 0` as no time limit
+- [x] T016 Confirm `RetryTransport` is wired as inner transport layer in `templates/sdk/factory.go.tmpl` (below `AuthTransport`)
+- [x] T017 Verify `internal/sdk/retry_enhancer.go` non-retriable bypass: status codes 400, 401, 403, 404 must not trigger retry
 - [ ] T017a [US2] Wire `features.retry.enabled`, `features.retry.max_attempts`, and `features.retry.initial_interval` from FeaturesConfig into `RetryTransport` construction in `templates/sdk/factory.go.tmpl` so retry parameters are overridable at runtime via Viper config
 - [ ] T017b [P] [US2] Add unit test for `RetryTransport` in `tests/unit/retry_transport_test.go`: 3-attempt 503 succeeds; 400 no retry; interval doubling; `MaxElapsedTime == 0` treated as no limit — write test first, confirm it fails before T015 implementation
 
@@ -79,7 +79,7 @@
 
 **Independent Test**: Configure 1s timeout, call operation against 5s-delayed mock server. Command exits with timeout error in ~1s.
 
-- [ ] T018 Update `templates/cli/main.go.tmpl` to apply per-operation `OperationMeta.Timeout` to `http.Client.Timeout` when constructing the layered client
+- [x] T018 Update `templates/cli/main.go.tmpl` to apply per-operation `OperationMeta.Timeout` to `http.Client.Timeout` when constructing the layered client
 - [ ] T019 [P] Add `<APP>_REQUEST_TIMEOUT` env var and `request_timeout` Viper config key to generated root command in `templates/cli/root.go.tmpl` — used as global default when no per-operation timeout is set
 - [ ] T019a [P] [US3] Add unit test for timeout enforcement in `tests/unit/timeout_test.go`: configure 1s timeout against a mock that delays 5s, verify command exits within 500ms of configured timeout — write test first
 

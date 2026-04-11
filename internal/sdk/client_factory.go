@@ -48,8 +48,8 @@ type Options struct {
 	// BaseTimeout is the default request timeout.
 	BaseTimeout time.Duration
 
-	// AuthStore provides credential resolution for authenticated requests.
-	AuthStore *auth.Store
+	// AuthResolver provides 5-tier credential resolution for authenticated requests.
+	AuthResolver *auth.Resolver
 
 	// RetryConfig overrides the default retry configuration.
 	// If nil, DefaultRetryConfig() is used.
@@ -74,7 +74,7 @@ func DefaultOptions() Options {
 //
 //	http.DefaultTransport
 //	  → RetryTransport (exponential backoff)
-//	    → AuthTransport (credential injection)
+//	    → AuthTransport (credential injection via 5-tier resolver)
 //
 // The outermost transport is applied last to the request.
 func NewHTTPClient(opts Options) *http.Client {
@@ -93,9 +93,9 @@ func NewHTTPClient(opts Options) *http.Client {
 		}
 	}
 
-	// Layer 2: Auth middleware
-	if opts.AuthStore != nil {
-		middleware := auth.NewMiddleware(opts.AuthStore)
+	// Layer 2: Auth middleware (uses 5-tier credential resolver)
+	if opts.AuthResolver != nil {
+		middleware := auth.NewMiddleware(opts.AuthResolver)
 		transport = &authTransport{
 			base:       transport,
 			middleware: middleware,

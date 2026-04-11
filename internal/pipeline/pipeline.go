@@ -336,10 +336,11 @@ var (
 func main() {
 	// Create the shared HTTP client with auth and retry transport layers.
 	// This is the SDK-first architecture: all commands share a single,
-	// pre-configured client rather than constructing HTTP requests inline.
-	store := auth.NewStore()
+	// pre-configured client with 5-tier credential resolution:
+	// flags > env vars > OS keychain > encrypted file > config file.
+	resolver := auth.NewResolver("%s", auth.DefaultSchemes())
 	opts := client.DefaultOptions()
-	opts.AuthStore = store
+	opts.AuthResolver = resolver
 	cli.SetAPIClient(client.NewHTTPClient(opts))
 
 	rootCmd := cli.RootCmd("%s", fmt.Sprintf("%%s (commit: %%s, built: %%s)", version, commit, date))
@@ -347,7 +348,7 @@ func main() {
 		os.Exit(1)
 	}
 }
-`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.AppName)
+`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.AppName, p.Config.AppName)
 
 	cmdDir := filepath.Join(p.Config.OutputDir, "cmd", p.Config.AppName)
 	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
