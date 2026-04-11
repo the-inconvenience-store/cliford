@@ -19,8 +19,15 @@ func NewInstallScriptGenerator(outputDir, appName string) *InstallScriptGenerato
 	return &InstallScriptGenerator{
 		outputDir: outputDir,
 		appName:   appName,
-		repoOwner: "OWNER",
+		repoOwner: appName, // Default to appName; override via SetOwner()
 		repoName:  appName,
+	}
+}
+
+// SetOwner sets the GitHub repo owner for install script URLs.
+func (g *InstallScriptGenerator) SetOwner(owner string) {
+	if owner != "" {
+		g.repoOwner = owner
 	}
 }
 

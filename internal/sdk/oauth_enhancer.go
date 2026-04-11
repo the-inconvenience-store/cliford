@@ -42,7 +42,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 // OAuthConfig holds OAuth 2.0 flow configuration.
@@ -134,6 +138,59 @@ func RefreshToken(ctx context.Context, cfg OAuthConfig, refreshToken string) (*O
 	// Placeholder — full implementation exchanges refresh token via HTTP POST
 	_ = refreshToken
 	return nil, fmt.Errorf("OAuth token refresh: not yet fully implemented (use auth login to re-authenticate)")
+}
+
+// ClientCredentialsManager handles OAuth 2.0 Client Credentials flow
+// with automatic token caching and proactive refresh.
+type ClientCredentialsManager struct {
+	mu          sync.Mutex
+	config      *clientcredentials.Config
+	cachedToken *oauth2.Token
+}
+
+// NewClientCredentialsManager creates a manager for the Client Credentials flow.
+func NewClientCredentialsManager(tokenURL, clientID, clientSecret string, scopes []string) *ClientCredentialsManager {
+	return &ClientCredentialsManager{
+		config: &clientcredentials.Config{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			TokenURL:     tokenURL,
+			Scopes:       scopes,
+		},
+	}
+}
+
+// Token returns a valid access token, fetching or refreshing as needed.
+// The token is cached in memory and refreshed 60 seconds before expiry.
+func (m *ClientCredentialsManager) Token(ctx context.Context) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Return cached token if still valid (with 60s buffer)
+	if m.cachedToken != nil && time.Now().Add(60*time.Second).Before(m.cachedToken.Expiry) {
+		return m.cachedToken.AccessToken, nil
+	}
+
+	// Fetch new token
+	token, err := m.config.Token(ctx)
+	if err != nil {
+		return "", fmt.Errorf("OAuth2 client credentials token exchange failed: %w", err)
+	}
+
+	m.cachedToken = token
+	return token.AccessToken, nil
+}
+
+// Credential returns an auth Credential from the cached or freshly fetched token.
+func (m *ClientCredentialsManager) Credential(ctx context.Context) (*Credential, error) {
+	token, err := m.Token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &Credential{
+		Method: "oauth2",
+		Token:  token,
+	}, nil
 }
 
 func joinScopes(scopes []string) string {

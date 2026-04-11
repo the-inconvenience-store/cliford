@@ -1,7 +1,7 @@
 # OpenAPI Extensions Reference
 
 Cliford supports `x-cliford-*` extensions in your OpenAPI spec for
-per-operation configuration. These are secondary to `cliford.yaml` — if both
+per-operation configuration. These are secondary to `cliford.yaml`. If both
 define a setting, `cliford.yaml` takes precedence.
 
 ## x-cliford-cli
@@ -17,10 +17,10 @@ paths:
         aliases:
           - ls
           - list
-        group: pets          # Override tag-based grouping
-        hidden: false        # Hide from --help (still callable)
-        confirm: false       # Require confirmation before executing
-        confirmMessage: ""   # Custom confirmation prompt
+        group: pets
+        hidden: false
+        confirm: false
+        confirmMessage: ""
 ```
 
 | Field | Type | Default | Description |
@@ -28,8 +28,12 @@ paths:
 | `aliases` | `[]string` | `[]` | Alternative command names |
 | `group` | `string` | (from tag) | Override command group |
 | `hidden` | `bool` | `false` | Hide from help output |
-| `confirm` | `bool` | `false` | Prompt for confirmation |
-| `confirmMessage` | `string` | `""` | Custom confirmation text |
+| `confirm` | `bool` | `false` | Prompt for confirmation before executing |
+| `confirmMessage` | `string` | auto-generated | Custom confirmation text |
+
+When `confirm` is `true` or the operation is a DELETE, the generated command
+displays a `[y/N]` prompt before sending the request. The `--yes` flag skips
+the prompt.
 
 ## x-cliford-tui
 
@@ -40,8 +44,8 @@ paths:
   /pets:
     get:
       x-cliford-tui:
-        displayAs: table     # How to render the response
-        refreshable: true    # Enable auto-refresh in TUI
+        displayAs: table
+        refreshable: true
 ```
 
 | Field | Type | Default | Description |
@@ -50,10 +54,42 @@ paths:
 | `refreshable` | `bool` | `false` | Enable TUI auto-refresh |
 
 Display mode auto-detection:
-- GET returning array -> `table`
-- GET returning object -> `detail`
-- POST/PUT/PATCH -> `form`
-- DELETE -> `detail`
+- GET returning array: `table`
+- GET returning object: `detail`
+- POST/PUT/PATCH: `form`
+- DELETE: `detail`
+
+## x-cliford-display
+
+Per-property extension on response schema fields that controls default table
+columns.
+
+```yaml
+components:
+  schemas:
+    Pet:
+      type: object
+      properties:
+        id:
+          type: integer
+          x-cliford-display: true
+        name:
+          type: string
+          x-cliford-display: true
+        internal_notes:
+          type: string
+          # No x-cliford-display, hidden from table by default
+```
+
+When any property in a response schema has `x-cliford-display: true`, only
+those properties appear as table columns by default. If no properties have
+this extension, all properties are shown.
+
+The `--fields` CLI flag overrides this behavior:
+
+```bash
+./myapp pets list --fields id,name,status
+```
 
 ## x-cliford-pagination
 
@@ -82,11 +118,11 @@ paths:
 | Field | Type | Description |
 |-------|------|-------------|
 | `type` | `string` | `offset`, `page`, `cursor`, `link`, `url` |
-| `input.<param>.name` | `string` | Query/body parameter name |
+| `input.<param>.name` | `string` | Query or body parameter name |
 | `input.<param>.in` | `string` | `query` or `body` |
 | `input.<param>.default` | `int` | Default value |
 | `output.results` | `string` | JSONPath to results array |
-| `output.nextCursor` | `string` | JSONPath to next cursor/page/URL |
+| `output.nextCursor` | `string` | JSONPath to next cursor, page, or URL |
 | `output.totalCount` | `string` | JSONPath to total count (optional) |
 
 ## x-cliford-retries
@@ -119,8 +155,8 @@ When both `cliford.yaml` and OpenAPI extensions define the same setting:
 cliford.yaml operation-level  (highest)
   > x-cliford-* extension
   > cliford.yaml global defaults
-  > built-in defaults         (lowest)
+  > built-in defaults           (lowest)
 ```
 
-Extensions are ignored by tools that don't understand them, so your OpenAPI
+Extensions are ignored by tools that do not understand them, so your OpenAPI
 spec remains compatible with other consumers.

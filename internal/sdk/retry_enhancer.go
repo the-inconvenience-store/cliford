@@ -49,14 +49,15 @@ type RetryConfig struct {
 }
 
 // DefaultRetryConfig returns sensible retry defaults.
+// Defaults: 3 attempts, 1s initial, 30s max interval, no elapsed time cap.
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
 		Enabled:              true,
 		MaxAttempts:          3,
-		InitialInterval:      500 * time.Millisecond,
-		MaxInterval:          60 * time.Second,
-		MaxElapsedTime:       5 * time.Minute,
-		Exponent:             1.5,
+		InitialInterval:      1 * time.Second,
+		MaxInterval:          30 * time.Second,
+		MaxElapsedTime:       0, // 0 = no time limit
+		Exponent:             2.0,
 		Jitter:               true,
 		StatusCodes:          []int{408, 429, 500, 502, 503, 504},
 		RetryConnectionErrors: true,
@@ -84,8 +85,8 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	for attempt := 0; attempt < t.Config.MaxAttempts; attempt++ {
 		if attempt > 0 {
-			// Check max elapsed time
-			if time.Since(startTime) >= t.Config.MaxElapsedTime {
+			// Check max elapsed time (0 = no limit)
+			if t.Config.MaxElapsedTime > 0 && time.Since(startTime) >= t.Config.MaxElapsedTime {
 				break
 			}
 

@@ -42,7 +42,25 @@
       "Bash(rm -rf * .*)",
       "Bash(/tmp/cliford-bin init:*)",
       "Read(//private/tmp/cliford-user-test/**)",
-      "Bash(/tmp/petstore-user --help)"
+      "Bash(/tmp/petstore-user --help)",
+      "Bash(rm -rf /tmp/tui-debug)",
+      "Bash(mkdir /tmp/tui-debug)",
+      "Bash(rm -rf /tmp/no-tui-test)",
+      "Bash(mkdir /tmp/no-tui-test)",
+      "Bash(rm -rf /tmp/tui-test)",
+      "Bash(mkdir /tmp/tui-test)",
+      "Read(//private/tmp/tui-test/**)",
+      "Bash(go run:*)",
+      "Bash(grep -n \"RunLifecycle\\\\|RegisterHook\\\\|ExecuteHook\" /Users/samstevens/asot/cliford/internal/hooks/*.go)",
+      "Bash(bash:*)",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
+      "Bash(.specify/scripts/bash/setup-plan.sh:*)",
+      "WebSearch",
+      "Bash(.specify/scripts/bash/update-agent-context.sh claude:*)",
+      "Bash(go list:*)",
+      "WebFetch(domain:diataxis.fr)",
+      "WebFetch(domain:en.wikipedia.org)",
+      "WebFetch(domain:docs.divio.com)"
     ]
   }
 }

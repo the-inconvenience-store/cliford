@@ -3,8 +3,13 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"os"
+	"sort"
 	"strings"
+	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -20,6 +25,10 @@ var (
 	noInteractive bool
 	tuiMode       bool
 	timeout       string
+
+	// apiClient is the shared HTTP client with auth, retry, and verbose transports.
+	// Set via SetAPIClient() from main.go; falls back to a default client if nil.
+	apiClient *http.Client
 )
 
 // RootCmd returns the root Cobra command for petstore.
@@ -36,18 +45,21 @@ func RootCmd(appName string, version string) *cobra.Command {
 	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table")
 	pf.StringVar(&serverURL, "server", "", "Override API server URL")
 	pf.StringVar(&timeout, "timeout", "30s", "Request timeout")
-	pf.BoolVar(&debugMode, "debug", false, "Log request/response to stderr (secrets redacted)")
+	pf.BoolVarP(&debugMode, "verbose", "v", false, "Log request/response to stderr (secrets redacted)")
+	_ = pf.Bool("debug", false, "Alias for --verbose")
+	_ = root.RegisterFlagCompletionFunc("debug", cobra.NoFileCompletions)
 	pf.BoolVar(&dryRunMode, "dry-run", false, "Display HTTP request without executing")
 	pf.BoolVarP(&yesMode, "yes", "y", false, "Skip all confirmations, use defaults")
 	pf.BoolVar(&agentMode, "agent", false, "Force agent mode (structured JSON, no interactive)")
 	pf.BoolVar(&noInteractive, "no-interactive", false, "Disable interactive prompts")
 	pf.BoolVar(&tuiMode, "tui", false, "Launch full TUI mode")
 
-	root.AddCommand(systemCmd())
 	root.AddCommand(petsCmd())
+	root.AddCommand(systemCmd())
 	root.AddCommand(usersCmd())
 	root.AddCommand(authCmd())
 	root.AddCommand(configCmd())
+	root.AddCommand(GenerateDocsCmd())
 
 	root.Long = root.Short + "\n\nAvailable servers:"
 	root.Long += "\n  --server https://api.petstore.example.com/v1  (Production)"
@@ -67,9 +79,103 @@ func FormatOutput(data any, format string) error {
 	case "yaml":
 		enc := yaml.NewEncoder(os.Stdout)
 		return enc.Encode(data)
+	case "table":
+		return formatTable(data)
 	default:
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(data)
 	}
+}
+
+// formatTable renders an array of objects as a text table.
+func formatTable(data any) error {
+	items, ok := data.([]any)
+	if !ok {
+		// Not an array — fall back to JSON
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(data)
+	}
+	if len(items) == 0 {
+		fmt.Println("No results.")
+		return nil
+	}
+
+	// Collect column headers from the first row
+	firstRow, ok := items[0].(map[string]any)
+	if !ok {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(data)
+	}
+	var headers []string
+	for k := range firstRow {
+		headers = append(headers, k)
+	}
+	sort.Strings(headers)
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	// Print headers
+	fmt.Fprintln(w, strings.Join(headers, "\t"))
+	// Print separator
+	seps := make([]string, len(headers))
+	for i, h := range headers {
+		seps[i] = strings.Repeat("-", len(h))
+	}
+	fmt.Fprintln(w, strings.Join(seps, "\t"))
+	// Print rows
+	for _, item := range items {
+		row, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		vals := make([]string, len(headers))
+		for i, h := range headers {
+			vals[i] = fmt.Sprintf("%v", row[h])
+		}
+		fmt.Fprintln(w, strings.Join(vals, "\t"))
+	}
+	return w.Flush()
+}
+
+// SetAPIClient sets the shared HTTP client used by all generated commands.
+// The client should be pre-configured with auth, retry, and verbose transport layers.
+func SetAPIClient(c *http.Client) {
+	apiClient = c
+}
+
+// GetAPIClient returns the shared HTTP client, falling back to a default if not configured.
+func GetAPIClient() *http.Client {
+	if apiClient != nil {
+		return apiClient
+	}
+	return &http.Client{Timeout: 30 * time.Second}
+}
+
+// SetDefaultServerURL sets the server URL from config/env.
+// This is overridden by the --server CLI flag if provided.
+func SetDefaultServerURL(url string) {
+	if serverURL == "" {
+		serverURL = url
+	}
+}
+
+// VerboseFlag returns a pointer to the verbose/debug mode flag.
+// Pass this to client.Options.VerboseFlag to enable request/response logging.
+func VerboseFlag() *bool {
+	return &debugMode
+}
+
+// promptValue prompts the user for a value on stdin.
+// Returns empty string if stdin is not a terminal.
+func promptValue(label string) string {
+	fi, _ := os.Stdin.Stat()
+	if fi != nil && (fi.Mode()&os.ModeCharDevice) == 0 {
+		return "" // not a TTY — skip prompt
+	}
+	fmt.Fprint(os.Stderr, label)
+	var line string
+	fmt.Scanln(&line)
+	return strings.TrimSpace(line)
 }

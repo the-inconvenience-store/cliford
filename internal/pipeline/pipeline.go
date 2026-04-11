@@ -183,6 +183,8 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 	engine := codegen.NewEngine(p.Config.TemplateDir)
 	cliGen := cli.NewGenerator(engine, p.Config.OutputDir, p.Config.AppName, p.Config.EnvVarPrefix)
 	cliGen.SetCustomCodeRegions(p.Config.CustomCodeRegions)
+	cliGen.SetGenerateTUI(p.Config.GenerateTUI)
+	cliGen.SetPackagePath(p.Config.PackageName)
 	if err := cliGen.Generate(p.Registry); err != nil {
 		return fmt.Errorf("generate CLI commands: %w", err)
 	}
@@ -210,6 +212,24 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 	redactGen := sdk.NewRedactGenerator(p.Config.OutputDir)
 	if err := redactGen.Generate(); err != nil {
 		return fmt.Errorf("generate redaction: %w", err)
+	}
+
+	// Generate verbose transport
+	verboseGen := sdk.NewVerboseEnhancer(p.Config.OutputDir, p.Config.PackageName)
+	if err := verboseGen.Generate(); err != nil {
+		return fmt.Errorf("generate verbose transport: %w", err)
+	}
+
+	// Generate runtime hooks (before_request / after_response)
+	hooksGen := sdk.NewHooksEnhancer(p.Config.OutputDir, p.Config.PackageName)
+	if err := hooksGen.Generate(); err != nil {
+		return fmt.Errorf("generate hooks runner: %w", err)
+	}
+
+	// Generate HTTP client factory (layered transport: verbose → auth → retry → default)
+	factoryGen := sdk.NewClientFactoryGenerator(p.Config.OutputDir, p.Config.AppName, p.Config.EnvVarPrefix, p.Config.PackageName)
+	if err := factoryGen.Generate(); err != nil {
+		return fmt.Errorf("generate client factory: %w", err)
 	}
 
 	// Generate OAuth support if any OAuth schemes exist
@@ -307,29 +327,73 @@ func stageInfra(ctx context.Context, p *Pipeline) error {
 }
 
 func generateInfra(p *Pipeline) error {
-	// Generate main.go
+	// Generate main.go with layered HTTP client setup
 	mainGo := fmt.Sprintf(`package main
 
 import (
 	"fmt"
 	"os"
 
+	"%s/internal/auth"
 	"%s/internal/cli"
+	"%s/internal/client"
+	"%s/internal/sdk"
+
+	"github.com/spf13/viper"
 )
 
 var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
+	version  = "dev"
+	commit   = "none"
+	date     = "unknown"
+	appTitle = "%s"
 )
 
 func main() {
+	// Create the shared HTTP client with auth and retry transport layers.
+	// This is the SDK-first architecture: all commands share a single,
+	// pre-configured client with 5-tier credential resolution:
+	// flags > env vars > OS keychain > encrypted file > config file.
+	resolver := auth.NewResolver("%s", auth.DefaultSchemes())
+	opts := client.DefaultOptions()
+	opts.AuthResolver = resolver
+	opts.VerboseFlag = cli.VerboseFlag()
+
+	// FeaturesConfig: timeout override from Viper / env
+	if timeout := viper.GetDuration("request_timeout"); timeout > 0 {
+		opts.BaseTimeout = timeout
+	}
+
+	// FeaturesConfig: retry overrides from Viper
+	if !viper.GetBool("features.retry.enabled") && viper.IsSet("features.retry.enabled") {
+		opts.RetryEnabled = false
+	}
+	if maxAttempts := viper.GetInt("features.retry.max_attempts"); maxAttempts > 0 {
+		cfg := sdk.DefaultRetryConfig()
+		cfg.MaxAttempts = maxAttempts
+		if interval := viper.GetDuration("features.retry.initial_interval"); interval > 0 {
+			cfg.InitialInterval = interval
+		}
+		opts.RetryConfig = &cfg
+	}
+
+	// Load global params from config (global_params.headers / global_params.query)
+	opts.GlobalHeaders = viper.GetStringMapString("global_params.headers")
+	opts.GlobalQueryParams = viper.GetStringMapString("global_params.query")
+
+	cli.SetAPIClient(client.NewHTTPClient(opts))
+
+	// Apply server_url from config/env if --server flag not used
+	if serverOverride := viper.GetString("server_url"); serverOverride != "" {
+		cli.SetDefaultServerURL(serverOverride)
+	}
+
 	rootCmd := cli.RootCmd("%s", fmt.Sprintf("%%s (commit: %%s, built: %%s)", version, commit, date))
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
-`, p.Config.PackageName, p.Config.AppName)
+`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.AppName, p.Config.AppName, p.Config.AppName)
 
 	cmdDir := filepath.Join(p.Config.OutputDir, "cmd", p.Config.AppName)
 	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
@@ -360,6 +424,8 @@ go 1.22
 require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/oauth2 v0.36.0
 	gopkg.in/yaml.v3 v3.0.1%s
 )
 `, p.Config.PackageName, charmDeps)

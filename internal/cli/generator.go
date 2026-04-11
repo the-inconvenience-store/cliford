@@ -6,6 +6,7 @@ import (
 	goformat "go/format"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/the-inconvenience-store/cliford/internal/codegen"
@@ -17,8 +18,10 @@ type Generator struct {
 	engine            *codegen.Engine
 	outputDir         string
 	appName           string
+	pkgPath           string
 	envPrefix         string
 	customCodeRegions bool
+	generateTUI       bool
 }
 
 // NewGenerator creates a CLI generator.
@@ -34,6 +37,16 @@ func NewGenerator(engine *codegen.Engine, outputDir, appName, envPrefix string) 
 // SetCustomCodeRegions enables custom code region markers in generated output.
 func (g *Generator) SetCustomCodeRegions(enabled bool) {
 	g.customCodeRegions = enabled
+}
+
+// SetGenerateTUI enables TUI launch wiring in the root command.
+func (g *Generator) SetGenerateTUI(enabled bool) {
+	g.generateTUI = enabled
+}
+
+// SetPackagePath sets the Go module path for import statements.
+func (g *Generator) SetPackagePath(pkgPath string) {
+	g.pkgPath = pkgPath
 }
 
 // Generate produces all CLI source files from the registry.
@@ -69,11 +82,20 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("")
 	sb.Line("import (")
 	sb.Line(`	"encoding/json"`)
+	sb.Line(`	"fmt"`)
+	sb.Line(`	"net/http"`)
 	sb.Line(`	"os"`)
+	sb.Line(`	"sort"`)
 	sb.Line(`	"strings"`)
+	sb.Line(`	"text/tabwriter"`)
+	sb.Line(`	"time"`)
 	sb.Line("")
 	sb.Line(`	"github.com/spf13/cobra"`)
 	sb.Line(`	"gopkg.in/yaml.v3"`)
+	if g.generateTUI && g.pkgPath != "" {
+		sb.Line("")
+		sb.Linef("	\"%s/internal/tui\"", g.pkgPath)
+	}
 	sb.Line(")")
 	sb.Line("")
 	sb.Line("var (")
@@ -86,6 +108,10 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	noInteractive bool`)
 	sb.Line(`	tuiMode       bool`)
 	sb.Line(`	timeout       string`)
+	sb.Line("")
+	sb.Line("	// apiClient is the shared HTTP client with auth, retry, and verbose transports.")
+	sb.Line("	// Set via SetAPIClient() from main.go; falls back to a default client if nil.")
+	sb.Line(`	apiClient *http.Client`)
 	sb.Line(")")
 	sb.Line("")
 	sb.Linef("// RootCmd returns the root Cobra command for %s.", g.appName)
@@ -96,13 +122,26 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("		Version: version,")
 	sb.Line("		SilenceUsage:  true,")
 	sb.Line("		SilenceErrors: true,")
+	if g.generateTUI {
+		sb.Line("		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {")
+		sb.Line("			if tuiMode {")
+		sb.Line("				if err := tui.Run(); err != nil {")
+		sb.Line(`					return fmt.Errorf("TUI error: %w", err)`)
+		sb.Line("				}")
+		sb.Line("				os.Exit(0)")
+		sb.Line("			}")
+		sb.Line("			return nil")
+		sb.Line("		},")
+	}
 	sb.Line("	}")
 	sb.Line("")
 	sb.Line("	pf := root.PersistentFlags()")
 	sb.Line(`	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table")`)
 	sb.Line(`	pf.StringVar(&serverURL, "server", "", "Override API server URL")`)
 	sb.Line(`	pf.StringVar(&timeout, "timeout", "30s", "Request timeout")`)
-	sb.Line(`	pf.BoolVar(&debugMode, "debug", false, "Log request/response to stderr (secrets redacted)")`)
+	sb.Line(`	pf.BoolVarP(&debugMode, "verbose", "v", false, "Log request/response to stderr (secrets redacted)")`)
+	sb.Line(`	_ = pf.Bool("debug", false, "Alias for --verbose")`)
+	sb.Line(`	_ = root.RegisterFlagCompletionFunc("debug", cobra.NoFileCompletions)`)
 	sb.Line(`	pf.BoolVar(&dryRunMode, "dry-run", false, "Display HTTP request without executing")`)
 	sb.Line(`	pf.BoolVarP(&yesMode, "yes", "y", false, "Skip all confirmations, use defaults")`)
 	sb.Line(`	pf.BoolVar(&agentMode, "agent", false, "Force agent mode (structured JSON, no interactive)")`)
@@ -110,11 +149,18 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	pf.BoolVar(&tuiMode, "tui", false, "Launch full TUI mode")`)
 	sb.Line("")
 
+	// Sort tags for deterministic output
+	var sortedTags []string
 	for tag := range reg.TagGroups {
+		sortedTags = append(sortedTags, tag)
+	}
+	sort.Strings(sortedTags)
+	for _, tag := range sortedTags {
 		sb.Linef("	root.AddCommand(%sCmd())", toCamelCase(tag))
 	}
 	sb.Line("	root.AddCommand(authCmd())")
 	sb.Line("	root.AddCommand(configCmd())")
+	sb.Line("	root.AddCommand(GenerateDocsCmd())")
 
 	if g.customCodeRegions {
 		sb.Line("")
@@ -151,11 +197,105 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	case "yaml":`)
 	sb.Line("		enc := yaml.NewEncoder(os.Stdout)")
 	sb.Line("		return enc.Encode(data)")
+	sb.Line(`	case "table":`)
+	sb.Line("		return formatTable(data)")
 	sb.Line("	default:")
 	sb.Line("		enc := json.NewEncoder(os.Stdout)")
 	sb.Line(`		enc.SetIndent("", "  ")`)
 	sb.Line("		return enc.Encode(data)")
 	sb.Line("	}")
+	sb.Line("}")
+	sb.Line("")
+	sb.Line("// formatTable renders an array of objects as a text table.")
+	sb.Line("func formatTable(data any) error {")
+	sb.Line("	items, ok := data.([]any)")
+	sb.Line("	if !ok {")
+	sb.Line("		// Not an array — fall back to JSON")
+	sb.Line("		enc := json.NewEncoder(os.Stdout)")
+	sb.Line(`		enc.SetIndent("", "  ")`)
+	sb.Line("		return enc.Encode(data)")
+	sb.Line("	}")
+	sb.Line("	if len(items) == 0 {")
+	sb.Line(`		fmt.Println("No results.")`)
+	sb.Line("		return nil")
+	sb.Line("	}")
+	sb.Line("")
+	sb.Line("	// Collect column headers from the first row")
+	sb.Line("	firstRow, ok := items[0].(map[string]any)")
+	sb.Line("	if !ok {")
+	sb.Line("		enc := json.NewEncoder(os.Stdout)")
+	sb.Line(`		enc.SetIndent("", "  ")`)
+	sb.Line("		return enc.Encode(data)")
+	sb.Line("	}")
+	sb.Line("	var headers []string")
+	sb.Line("	for k := range firstRow {")
+	sb.Line("		headers = append(headers, k)")
+	sb.Line("	}")
+	sb.Line("	sort.Strings(headers)")
+	sb.Line("")
+	sb.Line("	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)")
+	sb.Line("	// Print headers")
+	sb.Line(`	fmt.Fprintln(w, strings.Join(headers, "\t"))`)
+	sb.Line("	// Print separator")
+	sb.Line("	seps := make([]string, len(headers))")
+	sb.Line("	for i, h := range headers {")
+	sb.Line("		seps[i] = strings.Repeat(\"-\", len(h))")
+	sb.Line("	}")
+	sb.Line(`	fmt.Fprintln(w, strings.Join(seps, "\t"))`)
+	sb.Line("	// Print rows")
+	sb.Line("	for _, item := range items {")
+	sb.Line("		row, ok := item.(map[string]any)")
+	sb.Line("		if !ok { continue }")
+	sb.Line("		vals := make([]string, len(headers))")
+	sb.Line("		for i, h := range headers {")
+	sb.Line(`			vals[i] = fmt.Sprintf("%v", row[h])`)
+	sb.Line("		}")
+	sb.Line(`		fmt.Fprintln(w, strings.Join(vals, "\t"))`)
+	sb.Line("	}")
+	sb.Line("	return w.Flush()")
+	sb.Line("}")
+
+	// SetAPIClient function
+	sb.Line("")
+	sb.Line("// SetAPIClient sets the shared HTTP client used by all generated commands.")
+	sb.Line("// The client should be pre-configured with auth, retry, and verbose transport layers.")
+	sb.Line("func SetAPIClient(c *http.Client) {")
+	sb.Line("	apiClient = c")
+	sb.Line("}")
+	sb.Line("")
+	sb.Line("// GetAPIClient returns the shared HTTP client, falling back to a default if not configured.")
+	sb.Line("func GetAPIClient() *http.Client {")
+	sb.Line("	if apiClient != nil {")
+	sb.Line("		return apiClient")
+	sb.Line("	}")
+	sb.Line(`	return &http.Client{Timeout: 30 * time.Second}`)
+	sb.Line("}")
+	sb.Line("")
+	sb.Line("// SetDefaultServerURL sets the server URL from config/env.")
+	sb.Line("// This is overridden by the --server CLI flag if provided.")
+	sb.Line("func SetDefaultServerURL(url string) {")
+	sb.Line("	if serverURL == \"\" {")
+	sb.Line("		serverURL = url")
+	sb.Line("	}")
+	sb.Line("}")
+	sb.Line("")
+	sb.Line("// VerboseFlag returns a pointer to the verbose/debug mode flag.")
+	sb.Line("// Pass this to client.Options.VerboseFlag to enable request/response logging.")
+	sb.Line("func VerboseFlag() *bool {")
+	sb.Line("	return &debugMode")
+	sb.Line("}")
+	sb.Line("")
+	sb.Line("// promptValue prompts the user for a value on stdin.")
+	sb.Line("// Returns empty string if stdin is not a terminal.")
+	sb.Line("func promptValue(label string) string {")
+	sb.Line("	fi, _ := os.Stdin.Stat()")
+	sb.Line("	if fi != nil && (fi.Mode()&os.ModeCharDevice) == 0 {")
+	sb.Line(`		return "" // not a TTY — skip prompt`)
+	sb.Line("	}")
+	sb.Line("	fmt.Fprint(os.Stderr, label)")
+	sb.Line("	var line string")
+	sb.Line("	fmt.Scanln(&line)")
+	sb.Line("	return strings.TrimSpace(line)")
 	sb.Line("}")
 
 	return writeFormatted(filepath.Join(cliDir, "root.go"), sb.String())
@@ -164,9 +304,13 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg *registry.Registry, cliDir string) error {
 	// Determine which imports are needed
 	needsBytes := false
+	needsContext := false
 	for _, op := range ops {
 		if op.RequestBody != nil {
 			needsBytes = true
+		}
+		if op.Timeout != nil {
+			needsContext = true
 		}
 	}
 
@@ -178,7 +322,9 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 	if needsBytes {
 		sb.Line(`	"bytes"`)
 	}
-	sb.Line(`	"context"`)
+	if needsContext {
+		sb.Line(`	"context"`)
+	}
 	sb.Line(`	"encoding/json"`)
 	sb.Line(`	"fmt"`)
 	sb.Line(`	"io"`)
@@ -186,7 +332,9 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 	sb.Line(`	"net/url"`)
 	sb.Line(`	"os"`)
 	sb.Line(`	"strings"`)
-	sb.Line(`	"time"`)
+	if needsContext {
+		sb.Line(`	"time"`)
+	}
 	sb.Line("")
 	sb.Line(`	"github.com/spf13/cobra"`)
 	sb.Line(")")
@@ -219,12 +367,39 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.OperationMeta, reg *registry.Registry, tagPrefix string) {
 	funcName := tagPrefix + toPascalCase(op.CLICommandName)
 
+	// Build existing param flag name set for collision detection
+	existingParamFlags := make(map[string]bool)
+	for _, p := range op.Parameters {
+		existingParamFlags[p.FlagName] = true
+	}
+	// Also reserve "body" flag name to avoid collision with --body JSON flag
+	if op.RequestBody != nil {
+		existingParamFlags["body"] = true
+	}
+
+	// Determine if we have body properties to expand
+	hasBodyProps := op.RequestBody != nil && len(op.RequestBody.Schema.Properties) > 0
+	sortedProps := sortedSchemaKeys(func() map[string]registry.SchemaMeta {
+		if op.RequestBody != nil {
+			return op.RequestBody.Schema.Properties
+		}
+		return nil
+	}())
+
 	sb.Linef("func %sCmd() *cobra.Command {", funcName)
 
-	// Flag variables
+	// Flag variables for path/query/header params
 	for _, p := range op.Parameters {
 		goType := flagGoType(p.Schema)
 		sb.Linef("	var flag%s %s", toPascalCase(p.FlagName), goType)
+	}
+	// Body: individual property flags or fallback JSON
+	if hasBodyProps {
+		for _, propName := range sortedProps {
+			propSchema := op.RequestBody.Schema.Properties[propName]
+			varName := "bodyProp" + toPascalCase(propName)
+			sb.Linef("	var %s %s", varName, flagGoType(propSchema))
+		}
 	}
 	if op.RequestBody != nil {
 		sb.Line("	var bodyJSON string")
@@ -235,7 +410,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Linef("		Use:   %q,", op.CLICommandName)
 	sb.Linef("		Short: %q,", op.Summary)
 	if op.Description != "" {
-		sb.Linef("		Long:  %q,", op.Description)
+		sb.Linef("		Long:  %q,", wrapText(op.Description, 80))
 	}
 	if len(op.CLIAliases) > 0 {
 		sb.Linef("		Aliases: []string{%s},", quoteJoin(op.CLIAliases))
@@ -245,6 +420,57 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	}
 
 	sb.Line("		RunE: func(cmd *cobra.Command, args []string) error {")
+
+	// Prompt for missing required parameters (interactive TTY only)
+	requiredParams := []registry.ParamMeta{}
+	for _, p := range op.Parameters {
+		if p.Required {
+			requiredParams = append(requiredParams, p)
+		}
+	}
+	if len(requiredParams) > 0 {
+		sb.Line("			// Interactive prompts for missing required args")
+		sb.Line("			if !noInteractive && !agentMode {")
+		for _, p := range requiredParams {
+			flagVar := "flag" + toPascalCase(p.FlagName)
+			goType := flagGoType(p.Schema)
+			if goType == "string" {
+				sb.Linef("				if !cmd.Flags().Changed(%q) && %s == \"\" {", p.FlagName, flagVar)
+				sb.Linef("					%s = promptValue(%q)", flagVar, p.FlagName+": ")
+				sb.Linef("					if %s == \"\" {", flagVar)
+				sb.Linef("						return fmt.Errorf(\"required flag --%s not provided\")", p.FlagName)
+				sb.Line("					}")
+				sb.Line("				}")
+			}
+		}
+		sb.Line("			}")
+		sb.Line("")
+	}
+
+	// Confirmation prompt for destructive operations
+	needsConfirm := op.CLIConfirm || op.Method == "DELETE"
+	if needsConfirm {
+		confirmMsg := op.CLIConfirmMsg
+		if confirmMsg == "" {
+			confirmMsg = fmt.Sprintf("Are you sure you want to %s?", op.CLICommandName)
+		}
+		sb.Line("			// Confirm destructive operation")
+		sb.Line("			if !yesMode {")
+		sb.Linef("				answer := promptValue(%q)", confirmMsg+" [y/N]: ")
+		sb.Line("				if answer != \"y\" && answer != \"Y\" && answer != \"yes\" {")
+		sb.Line(`					fmt.Fprintln(os.Stderr, "Aborted.")`)
+		sb.Line("					return nil")
+		sb.Line("				}")
+		sb.Line("			}")
+		sb.Line("")
+	}
+
+	// Apply per-operation timeout via context if configured
+	if op.Timeout != nil {
+		sb.Linef("			ctx, cancel := context.WithTimeout(cmd.Context(), %d*time.Nanosecond)", op.Timeout.Nanoseconds())
+		sb.Line("			defer cancel()")
+	}
+	sb.Line("")
 
 	// Determine base URL
 	defaultURL := "http://localhost:8080"
@@ -309,7 +535,71 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 
 	// Request body
 	sb.Line("			var reqBody io.Reader")
-	if op.RequestBody != nil {
+	if hasBodyProps {
+		// Merge stdin → --body → individual flags, then validate
+		sb.Line("			{")
+		sb.Line("				bodyFields := make(map[string]any)")
+		sb.Line("				// stdin base layer")
+		sb.Line("				{")
+		sb.Line("					stat, _ := os.Stdin.Stat()")
+		sb.Line("					if stat != nil && (stat.Mode()&os.ModeCharDevice) == 0 {")
+		sb.Line("						if data, err := io.ReadAll(os.Stdin); err == nil && len(data) > 0 {")
+		sb.Line("							_ = json.Unmarshal(data, &bodyFields)")
+		sb.Line("						}")
+		sb.Line("					}")
+		sb.Line("				}")
+		sb.Line("				// --body JSON override")
+		sb.Line("				if bodyJSON != \"\" {")
+		sb.Line("					var override map[string]any")
+		sb.Line("					if err := json.Unmarshal([]byte(bodyJSON), &override); err != nil {")
+		sb.Line(`					    return fmt.Errorf("invalid --body JSON: %w", err)`)
+		sb.Line("					}")
+		sb.Line("					for k, v := range override {")
+		sb.Line("						bodyFields[k] = v")
+		sb.Line("					}")
+		sb.Line("				}")
+		sb.Line("				// individual flags (highest priority)")
+		for _, propName := range sortedProps {
+			propSchema := op.RequestBody.Schema.Properties[propName]
+			flagName := bodyPropFlagName(propName, existingParamFlags)
+			varName := "bodyProp" + toPascalCase(propName)
+			if len(propSchema.Enum) > 0 {
+				enumVals := enumStrings(propSchema.Enum)
+				sb.Linef("				if cmd.Flags().Changed(%q) {", flagName)
+				sb.Linef("					valid%s := []string{%s}", toPascalCase(propName), quoteJoin(enumVals))
+				sb.Line("					found := false")
+				sb.Linef("					for _, v := range valid%s {", toPascalCase(propName))
+				sb.Linef("						if v == %s { found = true; break }", varName)
+				sb.Line("					}")
+				sb.Line("					if !found {")
+				sb.Linef("						return fmt.Errorf(%q+\": must be one of: %%s\", strings.Join(valid%s, \", \"))", propName, toPascalCase(propName))
+				sb.Line("					}")
+				sb.Linef("					bodyFields[%q] = %s", propName, varName)
+				sb.Line("				}")
+			} else {
+				sb.Linef("				if cmd.Flags().Changed(%q) { bodyFields[%q] = %s }", flagName, propName, varName)
+			}
+		}
+		// Validate required fields after merge
+		if len(op.RequestBody.Schema.Required) > 0 {
+			sb.Line("				// validate required fields")
+			for _, reqProp := range op.RequestBody.Schema.Required {
+				flagName := bodyPropFlagName(reqProp, existingParamFlags)
+				sb.Linef("				if _, ok := bodyFields[%q]; !ok {", reqProp)
+				sb.Linef("					return fmt.Errorf(\"required field --%s is missing; use --%s or --body\")", flagName, flagName)
+				sb.Line("				}")
+			}
+		}
+		sb.Line("				if len(bodyFields) > 0 {")
+		sb.Line("					b, err := json.Marshal(bodyFields)")
+		sb.Line("					if err != nil {")
+		sb.Line(`						return fmt.Errorf("marshal body: %w", err)`)
+		sb.Line("					}")
+		sb.Line("					reqBody = bytes.NewReader(b)")
+		sb.Line("				}")
+		sb.Line("			}")
+	} else if op.RequestBody != nil {
+		// No schema properties: accept raw --body JSON or stdin
 		sb.Line("			if bodyJSON != \"\" {")
 		sb.Line("				reqBody = strings.NewReader(bodyJSON)")
 		sb.Line("			} else {")
@@ -324,8 +614,12 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	}
 	sb.Line("")
 
-	// Create request
-	sb.Linef("			req, err := http.NewRequestWithContext(context.Background(), %q, reqURL.String(), reqBody)", op.Method)
+	// Create request with context (carries per-operation timeout if set)
+	if op.Timeout != nil {
+		sb.Linef("			req, err := http.NewRequestWithContext(ctx, %q, reqURL.String(), reqBody)", op.Method)
+	} else {
+		sb.Linef("			req, err := http.NewRequestWithContext(cmd.Context(), %q, reqURL.String(), reqBody)", op.Method)
+	}
 	sb.Line("			if err != nil {")
 	sb.Line(`				return fmt.Errorf("create request: %w", err)`)
 	sb.Line("			}")
@@ -363,9 +657,60 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Line("			}")
 	sb.Line("")
 
-	// Execute
-	sb.Line("			client := &http.Client{Timeout: 30 * time.Second}")
-	sb.Line("			resp, err := client.Do(req)")
+	// Pagination: --all fetch loop (early return path for paginated operations)
+	if op.Pagination != nil && op.Pagination.OutputResults != "" {
+		sb.Line(`			fetchAll, _ := cmd.Flags().GetBool("all")`)
+		sb.Line(`			maxPages, _ := cmd.Flags().GetInt("max-pages")`)
+		sb.Line("			if fetchAll {")
+		sb.Line("				if maxPages <= 0 { maxPages = 1000 }")
+		sb.Line("				var allResults []any")
+		sb.Line("				cursor := \"\"")
+		sb.Line("				for page := 0; page < maxPages; page++ {")
+		sb.Line("					pageReq := req.Clone(req.Context())")
+		sb.Line("					if cursor != \"\" {")
+		sb.Linef("						q := pageReq.URL.Query()")
+		sb.Linef("						q.Set(%q, cursor)", op.Pagination.InputCursor.Name)
+		sb.Line("						pageReq.URL.RawQuery = q.Encode()")
+		sb.Line("					}")
+		sb.Line("					resp, err := GetAPIClient().Do(pageReq)")
+		sb.Line("					if err != nil {")
+		sb.Line(`						return fmt.Errorf("request failed on page %d: %w", page+1, err)`)
+		sb.Line("					}")
+		sb.Line("					body, _ := io.ReadAll(resp.Body)")
+		sb.Line("					resp.Body.Close()")
+		sb.Line("					if resp.StatusCode >= 400 {")
+		sb.Line(`						return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))`)
+		sb.Line("					}")
+		sb.Line("					var pageData map[string]any")
+		sb.Line("					if err := json.Unmarshal(body, &pageData); err != nil {")
+		sb.Line("						break")
+		sb.Line("					}")
+		// Extract results array
+		resultField := strings.TrimPrefix(op.Pagination.OutputResults, "$.")
+		sb.Linef("					if items, ok := pageData[%q]; ok {", resultField)
+		sb.Line("						if arr, ok := items.([]any); ok {")
+		sb.Line("							allResults = append(allResults, arr...)")
+		sb.Line("						}")
+		sb.Line("					}")
+		// Extract next cursor
+		if op.Pagination.OutputNextKey != "" {
+			nextField := strings.TrimPrefix(op.Pagination.OutputNextKey, "$.")
+			sb.Linef("					if next, ok := pageData[%q]; ok && next != nil {", nextField)
+			sb.Line("						if s, ok := next.(string); ok && s != \"\" {")
+			sb.Line("							cursor = s")
+			sb.Line("							continue")
+			sb.Line("						}")
+			sb.Line("					}")
+		}
+		sb.Line("					break // No more pages")
+		sb.Line("				}")
+		sb.Line("				return FormatOutput(allResults, outputFormat)")
+		sb.Line("			}")
+		sb.Line("")
+	}
+
+	// Execute using shared API client (pre-configured with auth/retry/verbose transports)
+	sb.Line("			resp, err := GetAPIClient().Do(req)")
 	sb.Line("			if err != nil {")
 	sb.Line(`				return fmt.Errorf("request failed: %w", err)`)
 	sb.Line("			}")
@@ -409,7 +754,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Line("	}")
 	sb.Line("")
 
-	// Register flags
+	// Register path/query/header flags
 	for _, p := range op.Parameters {
 		goType := flagGoType(p.Schema)
 		flagVar := "flag" + toPascalCase(p.FlagName)
@@ -449,6 +794,8 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 			sb.Linef("	cmd.Flags().BoolVar(&%s, %q, false, %q)", flagVar, p.FlagName, desc)
 		case "[]string":
 			sb.Linef("	cmd.Flags().StringSliceVar(&%s, %q, nil, %q)", flagVar, p.FlagName, desc)
+		case "float64":
+			sb.Linef("	cmd.Flags().Float64Var(&%s, %q, 0, %q)", flagVar, p.FlagName, desc)
 		}
 
 		if p.Required {
@@ -456,7 +803,44 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		}
 	}
 
-	if op.RequestBody != nil {
+	// Register body property flags (individual)
+	if hasBodyProps {
+		sb.Line("")
+		// Build required set
+		requiredSet := make(map[string]bool)
+		for _, r := range op.RequestBody.Schema.Required {
+			requiredSet[r] = true
+		}
+		for _, propName := range sortedProps {
+			propSchema := op.RequestBody.Schema.Properties[propName]
+			flagName := bodyPropFlagName(propName, existingParamFlags)
+			varName := "bodyProp" + toPascalCase(propName)
+			desc := propSchema.Description
+			if len(propSchema.Enum) > 0 {
+				enumDesc := strings.Join(enumStrings(propSchema.Enum), ", ")
+				if desc == "" {
+					desc = "One of: " + enumDesc
+				} else {
+					desc += " (" + enumDesc + ")"
+				}
+			}
+			switch flagGoType(propSchema) {
+			case "string":
+				sb.Linef("	cmd.Flags().StringVar(&%s, %q, %q, %q)", varName, flagName, "", desc)
+			case "int":
+				sb.Linef("	cmd.Flags().IntVar(&%s, %q, 0, %q)", varName, flagName, desc)
+			case "int64":
+				sb.Linef("	cmd.Flags().Int64Var(&%s, %q, 0, %q)", varName, flagName, desc)
+			case "bool":
+				sb.Linef("	cmd.Flags().BoolVar(&%s, %q, false, %q)", varName, flagName, desc)
+			case "[]string":
+				sb.Linef("	cmd.Flags().StringSliceVar(&%s, %q, nil, %q)", varName, flagName, desc)
+			case "float64":
+				sb.Linef("	cmd.Flags().Float64Var(&%s, %q, 0, %q)", varName, flagName, desc)
+			}
+		}
+		sb.Line(`	cmd.Flags().StringVar(&bodyJSON, "body", "", "Request body as JSON (overrides individual flags)")`)
+	} else if op.RequestBody != nil {
 		sb.Line(`	cmd.Flags().StringVar(&bodyJSON, "body", "", "Request body as JSON")`)
 	}
 
@@ -466,6 +850,17 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		sb.Line("	// Pagination flags")
 		sb.Line(`	cmd.Flags().Bool("all", false, "Fetch all pages")`)
 		sb.Line(`	cmd.Flags().Int("max-pages", 0, "Maximum pages to fetch (with --all, 0=unlimited)")`)
+		switch op.Pagination.Type {
+		case registry.PaginationCursor:
+			sb.Linef("	cmd.Flags().String(%q, \"\", \"Pagination cursor for next page\")", op.Pagination.InputCursor.Name)
+		case registry.PaginationOffset:
+			sb.Linef("	cmd.Flags().Int(%q, 0, \"Offset for pagination\")", op.Pagination.InputCursor.Name)
+		case registry.PaginationPage:
+			sb.Linef("	cmd.Flags().Int(%q, 1, \"Page number\")", op.Pagination.InputCursor.Name)
+		}
+		if op.Pagination.InputLimit.Name != "" {
+			sb.Linef("	cmd.Flags().Int(%q, %d, \"Number of items per page\")", op.Pagination.InputLimit.Name, op.Pagination.DefaultLimit)
+		}
 	}
 
 	// Retry flags on all commands
@@ -589,6 +984,83 @@ type GroupData struct {
 	Tag        string
 	AppName    string
 	Operations []registry.OperationMeta
+}
+
+// bodyPropFlagName returns the CLI flag name for a body property,
+// prefixing with "body-" only if the name collides with an existing param flag.
+func bodyPropFlagName(propName string, existingParamFlags map[string]bool) string {
+	name := toKebabCase(propName)
+	if existingParamFlags[name] {
+		return "body-" + name
+	}
+	return name
+}
+
+// toKebabCase converts camelCase or PascalCase to kebab-case.
+func toKebabCase(s string) string {
+	var result []byte
+	for i, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				result = append(result, '-')
+			}
+			result = append(result, byte(r+32))
+		} else if r == '_' || r == ' ' {
+			result = append(result, '-')
+		} else {
+			result = append(result, byte(r))
+		}
+	}
+	return string(result)
+}
+
+// sortedSchemaKeys returns the keys of a schema properties map in sorted order.
+func sortedSchemaKeys(m map[string]registry.SchemaMeta) []string {
+	if m == nil {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// enumStrings converts []any enum values to []string.
+func enumStrings(enum []any) []string {
+	result := make([]string, len(enum))
+	for i, e := range enum {
+		result[i] = fmt.Sprintf("%v", e)
+	}
+	return result
+}
+
+// wrapText wraps text at the given column width, preserving existing newlines.
+func wrapText(text string, width int) string {
+	if len(text) <= width {
+		return text
+	}
+	var result strings.Builder
+	for _, paragraph := range strings.Split(text, "\n") {
+		if result.Len() > 0 {
+			result.WriteByte('\n')
+		}
+		line := ""
+		for _, word := range strings.Fields(paragraph) {
+			if line == "" {
+				line = word
+			} else if len(line)+1+len(word) > width {
+				result.WriteString(line)
+				result.WriteByte('\n')
+				line = word
+			} else {
+				line += " " + word
+			}
+		}
+		result.WriteString(line)
+	}
+	return result.String()
 }
 
 func toSnakeCase(s string) string {

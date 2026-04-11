@@ -1,137 +1,172 @@
-# Getting Started
+# Tutorial: Your First Generated CLI
 
-This guide walks you through installing Cliford, generating your first CLI app
-from an OpenAPI spec, and running it.
+This tutorial walks you through generating a working CLI application from an
+OpenAPI specification. By the end, you will have a compiled binary that can
+authenticate with an API, list resources in a formatted table, and handle
+errors with automatic retries.
+
+## What you will learn
+
+- Installing Cliford
+- Generating a CLI from an OpenAPI spec
+- Running commands against an API
+- Setting up authentication
+- Using verbose mode to inspect requests
 
 ## Prerequisites
 
-- **Go 1.22+** — [install Go](https://go.dev/dl/)
+- **Go 1.22 or later** installed ([download](https://go.dev/dl/))
 - An **OpenAPI 3.0 or 3.1** specification file for your API
 
-Verify your Go installation:
+Verify Go is installed:
 
 ```bash
 go version
-# go version go1.22+ ...
 ```
 
-## Install Cliford
+## Step 1: Install Cliford
 
 ```bash
 go install github.com/the-inconvenience-store/cliford/cmd/cliford@latest
 ```
 
-Verify it's installed:
+Verify the installation:
 
 ```bash
 cliford --version
 cliford doctor
 ```
 
-The `doctor` command checks that Go, oapi-codegen, and your environment are
-ready.
+The `doctor` command checks that Go, required tools, and your environment are
+ready for code generation.
 
-## Generate Your First App
+## Step 2: Initialize a project
 
-### 1. Initialize
-
-Create a project directory and initialize Cliford with your spec:
+Create a directory and initialize Cliford with your OpenAPI spec:
 
 ```bash
-mkdir myapp && cd myapp
-cliford init --spec ../path/to/openapi.yaml --name myapp --package github.com/myorg/myapp
+mkdir petstore && cd petstore
+cliford init --spec ../path/to/petstore.yaml --name petstore --package github.com/myorg/petstore
 ```
 
-This creates `cliford.yaml` with sensible defaults derived from your spec.
+This creates a `cliford.yaml` configuration file with defaults derived from
+your spec.
 
-### 2. Review the configuration
-
-Open `cliford.yaml` and verify:
-
-```yaml
-spec: ../path/to/openapi.yaml
-app:
-  name: myapp
-  package: github.com/myorg/myapp
-  envVarPrefix: MYAPP
-generation:
-  mode: hybrid
-```
-
-### 3. Generate
+## Step 3: Generate the CLI
 
 ```bash
-cliford generate --spec ../path/to/openapi.yaml --name myapp --package github.com/myorg/myapp
+cliford generate
 ```
 
-Or if you have `cliford.yaml`, Cliford reads settings from it automatically.
+Cliford reads `cliford.yaml` and generates a complete Go project:
 
-Optional flags:
+```
+petstore/
+  cmd/petstore/main.go      # Entry point
+  internal/cli/              # Cobra commands for every operation
+  internal/sdk/              # HTTP client with retry and pagination
+  internal/auth/             # Credential storage and resolution
+  internal/client/           # Layered HTTP client factory
+  go.mod
+```
 
-| Flag               | Purpose                                                |
-| ------------------ | ------------------------------------------------------ |
-| `--tui`            | Generate TUI mode (Bubbletea explorer, forms, views)   |
-| `--release`        | Generate GoReleaser, install scripts, Homebrew formula |
-| `--custom-regions` | Add custom code region markers                         |
-| `--verbose`        | Show pipeline stage timings                            |
-| `--dry-run`        | Preview without writing files                          |
-
-### 4. Build
+## Step 4: Build the binary
 
 ```bash
 go mod tidy
-go build -o myapp ./cmd/myapp/
+go build -o petstore ./cmd/petstore/
 ```
 
-### 5. Run
+## Step 5: Explore the commands
 
 ```bash
-./myapp --help
+./petstore --help
 ```
 
-You'll see all your API operations organized as CLI commands grouped by
-OpenAPI tag, with `auth`, `config`, and `completion` commands included.
-
-## Example Session
-
-Given a Petstore OpenAPI spec with `pets` and `users` tags:
+You will see all your API operations organized as CLI commands grouped by
+OpenAPI tag. The output also includes `auth`, `config`, `generate-docs`, and
+`completion` commands.
 
 ```bash
-# List pets
-./myapp pets list --limit 10 --output-format table
-
-# Create a pet (with JSON body)
-./myapp pets create --body '{"name": "Fido", "species": "dog"}'
-
-# Get a specific pet
-./myapp pets get --pet-id 42 -o json
-
-# Dry-run to see the HTTP request
-./myapp pets list --dry-run
-
-# Authenticate
-./myapp auth login --token "sk-..."
-./myapp auth status
-
-# Switch servers
-./myapp pets list --server https://staging.api.example.com/v1
+./petstore pets --help
+./petstore pets list --help
 ```
 
-## Verification Checklist
-
-After generation, verify everything works:
+## Step 6: Make your first API call
 
 ```bash
-go build ./...           # Compiles
-go vet ./...             # No issues
-./myapp --help           # Shows all commands
-./myapp pets --help      # Shows operations under "pets"
-./myapp completion bash  # Generates shell completions
+# List resources (output defaults to formatted JSON)
+./petstore pets list --limit 10
+
+# Use verbose mode to see the full HTTP request and response
+./petstore pets list --limit 10 --verbose
 ```
 
-## Next Steps
+The `--verbose` (or `-v`) flag prints the request method, URL, headers, and
+response to stderr. Sensitive headers like `Authorization` are replaced with
+`[REDACTED]`.
 
-- [Configuration Guide](configuration.md) — customize naming, aliases, theming
-- [Authentication](authentication.md) — set up auth for your API
-- [TUI Mode](tui-mode.md) — enable the interactive terminal UI
-- [Distribution](distribution.md) — ship your app to users
+## Step 7: Set up authentication
+
+If your API requires authentication, set the credential via an environment
+variable. Cliford generates env var names following the pattern
+`<APP>_<SCHEME>_<TYPE>`:
+
+```bash
+# For a Bearer token scheme named "BearerAuth"
+export PETSTORE_BEARERAUTH_TOKEN="your-api-token"
+
+# For an API key scheme named "ApiKeyAuth"
+export PETSTORE_APIKEYAUTH_API_KEY="your-api-key"
+```
+
+Or use the interactive login command:
+
+```bash
+./petstore auth login --method bearer --token "your-api-token"
+./petstore auth status
+```
+
+Now every request includes the correct authentication header automatically.
+
+## Step 8: Try a dry run
+
+See what HTTP request would be sent without executing it:
+
+```bash
+./petstore pets create --body '{"name": "Fido", "species": "dog"}' --dry-run
+```
+
+## Step 9: Generate shell completions
+
+```bash
+# Bash
+./petstore completion bash > /etc/bash_completion.d/petstore
+
+# Zsh
+./petstore completion zsh > "${fpath[1]}/_petstore"
+
+# Fish
+./petstore completion fish > ~/.config/fish/completions/petstore.fish
+```
+
+## Verification checklist
+
+After generation, confirm everything works:
+
+```bash
+go build ./...              # Compiles without errors
+go vet ./...                # No issues
+./petstore --help           # Shows all commands
+./petstore pets --help      # Shows operations under "pets"
+./petstore completion bash  # Outputs valid completion script
+./petstore --version        # Shows version string
+```
+
+## Next steps
+
+- [Authentication](authentication.md) for credential storage, profiles, and OAuth
+- [Configuration](configuration.md) for the full `cliford.yaml` reference
+- [Pagination and Retries](pagination-retries.md) for handling large result sets
+- [TUI Mode](tui-mode.md) for generating an interactive terminal interface
+- [Architecture](architecture.md) for how the generated app is structured internally

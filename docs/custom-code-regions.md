@@ -101,7 +101,7 @@ determine the appropriate SemVer bump.
 
 ## Tips
 
-- Keep custom code **small and focused** — if your custom region grows large,
+- Keep custom code **small and focused**. If your custom region grows large,
   consider extracting it into a separate package and calling it from the region.
 - Use `<operationId>:pre` for request mutation (headers, params, tracing).
 - Use `<operationId>:post` for response processing (logging, metrics, caching).
