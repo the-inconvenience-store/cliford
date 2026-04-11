@@ -214,6 +214,12 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 		return fmt.Errorf("generate redaction: %w", err)
 	}
 
+	// Generate HTTP client factory (layered transport: auth → retry → default)
+	factoryGen := sdk.NewClientFactoryGenerator(p.Config.OutputDir, p.Config.AppName, p.Config.EnvVarPrefix, p.Config.PackageName)
+	if err := factoryGen.Generate(); err != nil {
+		return fmt.Errorf("generate client factory: %w", err)
+	}
+
 	// Generate OAuth support if any OAuth schemes exist
 	for _, scheme := range p.Registry.SecuritySchemes {
 		if scheme.Flows != nil {
@@ -309,14 +315,16 @@ func stageInfra(ctx context.Context, p *Pipeline) error {
 }
 
 func generateInfra(p *Pipeline) error {
-	// Generate main.go
+	// Generate main.go with layered HTTP client setup
 	mainGo := fmt.Sprintf(`package main
 
 import (
 	"fmt"
 	"os"
 
+	"%s/internal/auth"
 	"%s/internal/cli"
+	"%s/internal/client"
 )
 
 var (
@@ -326,12 +334,20 @@ var (
 )
 
 func main() {
+	// Create the shared HTTP client with auth and retry transport layers.
+	// This is the SDK-first architecture: all commands share a single,
+	// pre-configured client rather than constructing HTTP requests inline.
+	store := auth.NewStore()
+	opts := client.DefaultOptions()
+	opts.AuthStore = store
+	cli.SetAPIClient(client.NewHTTPClient(opts))
+
 	rootCmd := cli.RootCmd("%s", fmt.Sprintf("%%s (commit: %%s, built: %%s)", version, commit, date))
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
-`, p.Config.PackageName, p.Config.AppName)
+`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.AppName)
 
 	cmdDir := filepath.Join(p.Config.OutputDir, "cmd", p.Config.AppName)
 	if err := os.MkdirAll(cmdDir, 0o755); err != nil {

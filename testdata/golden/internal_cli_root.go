@@ -3,8 +3,10 @@ package cli
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -20,6 +22,10 @@ var (
 	noInteractive bool
 	tuiMode       bool
 	timeout       string
+
+	// apiClient is the shared HTTP client with auth, retry, and verbose transports.
+	// Set via SetAPIClient() from main.go; falls back to a default client if nil.
+	apiClient *http.Client
 )
 
 // RootCmd returns the root Cobra command for petstore.
@@ -72,4 +78,18 @@ func FormatOutput(data any, format string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(data)
 	}
+}
+
+// SetAPIClient sets the shared HTTP client used by all generated commands.
+// The client should be pre-configured with auth, retry, and verbose transport layers.
+func SetAPIClient(c *http.Client) {
+	apiClient = c
+}
+
+// GetAPIClient returns the shared HTTP client, falling back to a default if not configured.
+func GetAPIClient() *http.Client {
+	if apiClient != nil {
+		return apiClient
+	}
+	return &http.Client{Timeout: 30 * time.Second}
 }

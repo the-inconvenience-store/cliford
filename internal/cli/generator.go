@@ -85,8 +85,10 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	if g.generateTUI {
 		sb.Line(`	"fmt"`)
 	}
+	sb.Line(`	"net/http"`)
 	sb.Line(`	"os"`)
 	sb.Line(`	"strings"`)
+	sb.Line(`	"time"`)
 	sb.Line("")
 	sb.Line(`	"github.com/spf13/cobra"`)
 	sb.Line(`	"gopkg.in/yaml.v3"`)
@@ -106,6 +108,10 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	noInteractive bool`)
 	sb.Line(`	tuiMode       bool`)
 	sb.Line(`	timeout       string`)
+	sb.Line("")
+	sb.Line("	// apiClient is the shared HTTP client with auth, retry, and verbose transports.")
+	sb.Line("	// Set via SetAPIClient() from main.go; falls back to a default client if nil.")
+	sb.Line(`	apiClient *http.Client`)
 	sb.Line(")")
 	sb.Line("")
 	sb.Linef("// RootCmd returns the root Cobra command for %s.", g.appName)
@@ -189,6 +195,22 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("	}")
 	sb.Line("}")
 
+	// SetAPIClient function
+	sb.Line("")
+	sb.Line("// SetAPIClient sets the shared HTTP client used by all generated commands.")
+	sb.Line("// The client should be pre-configured with auth, retry, and verbose transport layers.")
+	sb.Line("func SetAPIClient(c *http.Client) {")
+	sb.Line("	apiClient = c")
+	sb.Line("}")
+	sb.Line("")
+	sb.Line("// GetAPIClient returns the shared HTTP client, falling back to a default if not configured.")
+	sb.Line("func GetAPIClient() *http.Client {")
+	sb.Line("	if apiClient != nil {")
+	sb.Line("		return apiClient")
+	sb.Line("	}")
+	sb.Line(`	return &http.Client{Timeout: 30 * time.Second}`)
+	sb.Line("}")
+
 	return writeFormatted(filepath.Join(cliDir, "root.go"), sb.String())
 }
 
@@ -217,7 +239,6 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 	sb.Line(`	"net/url"`)
 	sb.Line(`	"os"`)
 	sb.Line(`	"strings"`)
-	sb.Line(`	"time"`)
 	sb.Line("")
 	sb.Line(`	"github.com/spf13/cobra"`)
 	sb.Line(")")
@@ -481,9 +502,8 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Line("			}")
 	sb.Line("")
 
-	// Execute
-	sb.Line("			client := &http.Client{Timeout: 30 * time.Second}")
-	sb.Line("			resp, err := client.Do(req)")
+	// Execute using shared API client (pre-configured with auth/retry/verbose transports)
+	sb.Line("			resp, err := GetAPIClient().Do(req)")
 	sb.Line("			if err != nil {")
 	sb.Line(`				return fmt.Errorf("request failed: %w", err)`)
 	sb.Line("			}")

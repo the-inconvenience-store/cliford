@@ -50,7 +50,13 @@
       "Bash(rm -rf /tmp/tui-test)",
       "Bash(mkdir /tmp/tui-test)",
       "Read(//private/tmp/tui-test/**)",
-      "Bash(go run:*)"
+      "Bash(go run:*)",
+      "Bash(grep -n \"RunLifecycle\\\\|RegisterHook\\\\|ExecuteHook\" /Users/samstevens/asot/cliford/internal/hooks/*.go)",
+      "Bash(bash:*)",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
+      "Bash(.specify/scripts/bash/setup-plan.sh:*)",
+      "WebSearch",
+      "Bash(.specify/scripts/bash/update-agent-context.sh claude:*)"
     ]
   }
 }
