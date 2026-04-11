@@ -21,9 +21,16 @@ func NewHomebrewGenerator(outputDir, appName, desc string) *HomebrewGenerator {
 	return &HomebrewGenerator{
 		outputDir: outputDir,
 		appName:   appName,
-		repoOwner: "OWNER",
+		repoOwner: appName, // Default to appName; override via SetOwner()
 		repoName:  appName,
 		desc:      desc,
+	}
+}
+
+// SetOwner sets the GitHub repo owner for Homebrew formula URLs.
+func (g *HomebrewGenerator) SetOwner(owner string) {
+	if owner != "" {
+		g.repoOwner = owner
 	}
 }
 

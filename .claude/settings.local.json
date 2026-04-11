@@ -56,7 +56,11 @@
       "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
       "Bash(.specify/scripts/bash/setup-plan.sh:*)",
       "WebSearch",
-      "Bash(.specify/scripts/bash/update-agent-context.sh claude:*)"
+      "Bash(.specify/scripts/bash/update-agent-context.sh claude:*)",
+      "Bash(go list:*)",
+      "WebFetch(domain:diataxis.fr)",
+      "WebFetch(domain:en.wikipedia.org)",
+      "WebFetch(domain:docs.divio.com)"
     ]
   }
 }

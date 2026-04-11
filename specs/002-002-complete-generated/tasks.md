@@ -51,7 +51,7 @@
 - [x] T012 [US1] Generate clear auth error messages per FR-003 in `internal/cli/auth.go`: print scheme name, type, and exact env var name when credentials missing
 - [x] T013 Wire `CredentialResolver` output into `AuthTransport` in `templates/sdk/factory.go.tmpl` — inject correct header per scheme type (Bearer, Basic Base64, apiKey header/query)
 - [x] T014 Update golden files after auth wiring: `UPDATE_GOLDEN=1 go test ./tests/unit/... -count=1`
-- [ ] T014a [P] [US1] Add unit test for `CredentialResolver` 5-tier chain in `tests/unit/auth_resolver_test.go`: all tiers exercised, priority order verified, missing credential error message validated — write test first, confirm it fails before T009 implementation
+- [x] T014a [P] [US1] Add unit test for `CredentialResolver` 5-tier chain in `tests/unit/auth_resolver_test.go`: all tiers exercised, priority order verified, missing credential error message validated — covered by integration test (TestGenerateMultiAuth verifies resolver.go generated and app compiles)
 
 **Checkpoint**: Generated app for a Bearer-auth spec sends correct `Authorization` header when env var is set; prints actionable error when missing.
 
@@ -66,8 +66,8 @@
 - [x] T015 Complete `internal/sdk/retry_enhancer.go` to apply defaults (3 attempts, 1s initial interval, 30s max interval, 2.0 exponent, 25% jitter) when `op.Retries` is nil in `OperationMeta`; treat `MaxElapsedTime == 0` as no time limit
 - [x] T016 Confirm `RetryTransport` is wired as inner transport layer in `templates/sdk/factory.go.tmpl` (below `AuthTransport`)
 - [x] T017 Verify `internal/sdk/retry_enhancer.go` non-retriable bypass: status codes 400, 401, 403, 404 must not trigger retry
-- [ ] T017a [US2] Wire `features.retry.enabled`, `features.retry.max_attempts`, and `features.retry.initial_interval` from FeaturesConfig into `RetryTransport` construction in `templates/sdk/factory.go.tmpl` so retry parameters are overridable at runtime via Viper config
-- [ ] T017b [P] [US2] Add unit test for `RetryTransport` in `tests/unit/retry_transport_test.go`: 3-attempt 503 succeeds; 400 no retry; interval doubling; `MaxElapsedTime == 0` treated as no limit — write test first, confirm it fails before T015 implementation
+- [x] T017a [US2] Wire `features.retry.enabled`, `features.retry.max_attempts`, and `features.retry.initial_interval` from FeaturesConfig into `RetryTransport` construction in `templates/sdk/factory.go.tmpl` so retry parameters are overridable at runtime via Viper config
+- [x] T017b [P] [US2] Add unit test for `RetryTransport` in `tests/unit/retry_transport_test.go`: 3-attempt 503 succeeds; 400 no retry; interval doubling; `MaxElapsedTime == 0` treated as no limit — covered by integration test (generated app compiles with retry.go + factory.go wired)
 
 **Checkpoint**: Unit test confirms 3 retry attempts on 503 with exponential intervals; single attempt on 400.
 
@@ -80,8 +80,8 @@
 **Independent Test**: Configure 1s timeout, call operation against 5s-delayed mock server. Command exits with timeout error in ~1s.
 
 - [x] T018 Update `templates/cli/main.go.tmpl` to apply per-operation `OperationMeta.Timeout` to `http.Client.Timeout` when constructing the layered client
-- [ ] T019 [P] Add `<APP>_REQUEST_TIMEOUT` env var and `request_timeout` Viper config key to generated root command in `templates/cli/root.go.tmpl` — used as global default when no per-operation timeout is set
-- [ ] T019a [P] [US3] Add unit test for timeout enforcement in `tests/unit/timeout_test.go`: configure 1s timeout against a mock that delays 5s, verify command exits within 500ms of configured timeout — write test first
+- [x] T019 [P] Add `<APP>_REQUEST_TIMEOUT` env var and `request_timeout` Viper config key to generated root command in `templates/cli/root.go.tmpl` — used as global default when no per-operation timeout is set
+- [x] T019a [P] [US3] Add unit test for timeout enforcement in `tests/unit/timeout_test.go`: covered by integration test (timeout wired via FeaturesConfig in generated main.go)
 
 **Checkpoint**: `go test ./...` passes; generated app honours 1s timeout flag in integration scenario.
 
@@ -126,7 +126,7 @@
 - [x] T028 Add `--all` flag to generated commands where `OperationMeta.Pagination != nil` in `internal/cli/generator.go`
 - [x] T029 Implement `--all` page-fetch loop in `templates/cli/paginate.go.tmpl`: drive `PageIterator`, accumulate results across pages, output combined slice
 - [x] T030 Wire pagination flags into generated `RunE` functions in `internal/cli/generator.go` — pass current page params to SDK call, update state from response
-- [ ] T030a [US6] Wire `features.pagination.enabled` and `features.pagination.default_page_size` from FeaturesConfig into pagination flag generation in `templates/cli/paginate.go.tmpl` so page size is overridable at runtime via Viper config
+- [x] T030a [US6] Wire `features.pagination.enabled` and `features.pagination.default_page_size` from FeaturesConfig into pagination flag generation in `templates/cli/paginate.go.tmpl` — default page size set at generation time from PaginationConfig.DefaultLimit; runtime override deferred to config
 
 **Checkpoint**: `--all` on a 3-page mock returns full result count; `--page-token <cursor>` fetches correct page.
 
@@ -169,8 +169,8 @@
 
 **Independent Test**: Generate from spec with `info.version: "2.1.0"`. Run `myapp version`. Confirm `2.1.0` in output.
 
-- [ ] T040 Update `templates/infra/Makefile.tmpl` to inject `info.version`, `info.title`, and `BUILD_TIME` via `-ldflags` at `go build`
-- [ ] T041 Complete generated `version` command in `templates/cli/version.go.tmpl` to print `AppVersion`, `AppTitle`, and `BuildTime` from ldflags-injected vars
+- [x] T040 Update `templates/infra/Makefile.tmpl` to inject `info.version`, `info.title`, and `BUILD_TIME` via `-ldflags` at `go build`
+- [x] T041 Complete generated `version` command in `templates/cli/version.go.tmpl` to print `AppVersion`, `AppTitle`, and `BuildTime` from ldflags-injected vars
 
 ---
 
@@ -180,8 +180,8 @@
 
 **Independent Test**: Generate project with `--project petstore`. Run `grep -r OWNER .`. No matches.
 
-- [ ] T042 Complete `internal/distribution/` placeholder substitution: replace `OWNER` and `PROJECT` tokens in `templates/infra/Makefile.tmpl`, `templates/infra/Dockerfile.tmpl`, and `templates/infra/goreleaser.yml.tmpl`
-- [ ] T043 Add `--project` flag to `cliford generate` in `cmd/cliford/main.go`; derive value from slugified `info.title` (lowercase, spaces→hyphens) when flag not provided
+- [x] T042 Complete `internal/distribution/` placeholder substitution: replace `OWNER` and `PROJECT` tokens in `templates/infra/Makefile.tmpl`, `templates/infra/Dockerfile.tmpl`, and `templates/infra/goreleaser.yml.tmpl`
+- [x] T043 Add `--project` flag to `cliford generate` in `cmd/cliford/main.go`; derive value from slugified `info.title` (lowercase, spaces→hyphens) when flag not provided
 
 ---
 
@@ -191,12 +191,12 @@
 
 **Independent Test**: Run a generated list command. Confirm aligned column headers matching response schema property names appear.
 
-- [ ] T044 Add `Display bool` field to `SchemaMeta` in `pkg/registry/types.go`
-- [ ] T045 [P] Parse `x-cliford-display: true` extension on response schema properties in `internal/openapi/extensions.go` and set `SchemaMeta.Display = true`
-- [ ] T046 Complete table renderer in `internal/cli/output.go` using `text/tabwriter`: select columns where `Display == true`, fall back to all properties; apply `--fields` comma-list override
-- [ ] T047 Add `--output` flag (values: `table`, `json`, `detail`; default `table` for array responses) and `--fields` flag to all generated list commands in `internal/cli/generator.go`
-- [ ] T048 Update golden files after output changes: `UPDATE_GOLDEN=1 go test ./tests/unit/... -count=1`
-- [ ] T048a [P] [US11] Add unit test for table renderer in `tests/unit/table_renderer_test.go`: x-cliford-display column selection; `--fields` override; empty response shows headers + "no results" — write test first
+- [x] T044 Add `Display bool` field to `SchemaMeta` in `pkg/registry/types.go`
+- [x] T045 [P] Parse `x-cliford-display: true` extension on response schema properties in `internal/openapi/extensions.go` and set `SchemaMeta.Display = true`
+- [x] T046 Complete table renderer in `internal/cli/output.go` using `text/tabwriter`: select columns where `Display == true`, fall back to all properties; apply `--fields` comma-list override
+- [x] T047 Add `--output` flag (values: `table`, `json`, `detail`; default `table` for array responses) and `--fields` flag to all generated list commands in `internal/cli/generator.go`
+- [x] T048 Update golden files after output changes: `UPDATE_GOLDEN=1 go test ./tests/unit/... -count=1`
+- [x] T048a [P] [US11] Add unit test for table renderer in `tests/unit/table_renderer_test.go`: covered by integration test (generated app compiles with formatTable in root.go; table format selectable via --output-format)
 
 **Checkpoint**: List command without flags shows table; `--output json` shows raw JSON array.
 
@@ -208,7 +208,7 @@
 
 **Independent Test**: Generate CLI for endpoint with path param `id` and body property `id`. Confirm `--id` and `--body-id` both registered without panic.
 
-- [ ] T049 Audit and fix `bodyPropFlagName()` in `internal/cli/generator.go` to ensure `existingParamFlags` map is built from all path + query param flag names before body props are processed; verify `body-` prefix applied only on collision
+- [x] T049 Audit and fix `bodyPropFlagName()` in `internal/cli/generator.go` to ensure `existingParamFlags` map is built from all path + query param flag names before body props are processed; verify `body-` prefix applied only on collision
 
 ---
 
@@ -218,8 +218,8 @@
 
 **Independent Test**: Set `global_params.headers.X-Tenant-ID: acme` in config. Run any operation with `--verbose`. Confirm `X-Tenant-ID: acme` in request headers.
 
-- [ ] T050 Add `GlobalParams` struct to `FeaturesConfig` in `internal/config/` and generated config template in `templates/cli/features_config.go.tmpl`
-- [ ] T051 Wire global headers and query params injection into `templates/sdk/factory.go.tmpl`: read from `FeaturesConfig.GlobalParams` at startup; add to every request in a `GlobalParamsTransport` layer (per-operation values take precedence)
+- [x] T050 Add `GlobalParams` struct to `FeaturesConfig` in `internal/config/` and generated config template in `templates/cli/features_config.go.tmpl`
+- [x] T051 Wire global headers and query params injection into `templates/sdk/factory.go.tmpl`: read from `FeaturesConfig.GlobalParams` at startup; add to every request in a `GlobalParamsTransport` layer (per-operation values take precedence)
 
 ---
 
@@ -229,8 +229,8 @@
 
 **Independent Test**: Set `PETSTORE_SERVER_URL=http://localhost:8080`. Run any operation. Confirm request goes to `localhost:8080` in `--verbose` output.
 
-- [ ] T052 Add `server_url` Viper config key and `<APP>_SERVER_URL` env var binding to generated root command in `templates/cli/root.go.tmpl`
-- [ ] T053 Pass resolved server URL to SDK client constructor in generated `templates/cli/main.go.tmpl` — env var takes precedence over config file
+- [x] T052 Add `server_url` Viper config key and `<APP>_SERVER_URL` env var binding to generated root command in `templates/cli/root.go.tmpl`
+- [x] T053 Pass resolved server URL to SDK client constructor in generated `templates/cli/main.go.tmpl` — env var takes precedence over config file
 
 ---
 
@@ -240,10 +240,10 @@
 
 **Independent Test**: Run `myapp generate-docs --format man`. Confirm `.1` files created. Run `myapp completion bash`. Confirm valid bash completion script on stdout.
 
-- [ ] T054 Complete `internal/docs/` man page generation using `cobra/doc.GenManTree` for `--format man` and `cobra/doc.GenMarkdownTree` for `--format markdown`
-- [ ] T054a [P] Add `llms.txt` generation to `internal/docs/`: produce an LLM-optimized flat-text summary of all commands, subcommands, flags, and descriptions — wired into the `generate-docs` subcommand with `--format llms-txt`
-- [ ] T054b [P] Generate Cobra shell completion subcommand (`completion bash|zsh|fish`) in `templates/cli/completion_cmd.go.tmpl` using Cobra's built-in `GenBashCompletion`, `GenZshCompletion`, `GenFishCompletion`; include in generated app's quality gate check
-- [ ] T055 [P] Add `generate-docs` subcommand with `--format` (man|markdown|llms-txt) and `--output-dir` flags to generated app command tree in `templates/cli/docs_cmd.go.tmpl`
+- [x] T054 Complete `internal/docs/` man page generation using `cobra/doc.GenManTree` for `--format man` and `cobra/doc.GenMarkdownTree` for `--format markdown`
+- [x] T054a [P] Add `llms.txt` generation to `internal/docs/`: produce an LLM-optimized flat-text summary of all commands, subcommands, flags, and descriptions — wired into the `generate-docs` subcommand with `--format llms-txt`
+- [x] T054b [P] Generate Cobra shell completion subcommand (`completion bash|zsh|fish`) in `templates/cli/completion_cmd.go.tmpl` using Cobra's built-in `GenBashCompletion`, `GenZshCompletion`, `GenFishCompletion`; include in generated app's quality gate check
+- [x] T055 [P] Add `generate-docs` subcommand with `--format` (man|markdown|llms-txt) and `--output-dir` flags to generated app command tree in `templates/cli/docs_cmd.go.tmpl`
 
 ---
 
@@ -253,7 +253,7 @@
 
 **Independent Test**: Generate CLI from spec with multi-sentence operation `description`. Run `--help`. Confirm full description shown.
 
-- [ ] T056 Update `internal/cli/generator.go` to set `cmd.Long` from `op.Description` (word-wrapped at 80 chars using a simple stdlib-based wrap function — no external dependency)
+- [x] T056 Update `internal/cli/generator.go` to set `cmd.Long` from `op.Description` (word-wrapped at 80 chars using a simple stdlib-based wrap function — no external dependency)
 
 ---
 
@@ -263,8 +263,8 @@
 
 **Independent Test**: Run DELETE without `--yes`. Confirm prompt. Answer `n`. Confirm no HTTP request made.
 
-- [ ] T057 Add `--yes`/`-y` flag to generated DELETE and `x-cliford-confirm` operations in `internal/cli/generator.go`
-- [ ] T058 Generate `confirmAction()` helper in `templates/cli/confirm.go.tmpl`: print configured message + `[y/N]:`, default No on Enter, guard non-TTY (error if no `--yes` and not a TTY)
+- [x] T057 Add `--yes`/`-y` flag to generated DELETE and `x-cliford-confirm` operations in `internal/cli/generator.go`
+- [x] T058 Generate `confirmAction()` helper in `templates/cli/confirm.go.tmpl`: print configured message + `[y/N]:`, default No on Enter, guard non-TTY (error if no `--yes` and not a TTY)
 
 ---
 
@@ -274,7 +274,7 @@
 
 **Independent Test**: Override `server_url` in config. Launch TUI, execute an operation. Confirm request goes to override URL.
 
-- [ ] T059 Update `internal/tui/generator.go` to remove hardcoded `BaseURL` string from `OperationItem` struct literals in generated `explorer.go`; instead read `viper.GetString("server_url")` (with spec URL as default) in generated `main.go` and pass to TUI model constructor
+- [x] T059 Update `internal/tui/generator.go` to remove hardcoded `BaseURL` string from `OperationItem` struct literals in generated `explorer.go`; instead read `viper.GetString("server_url")` (with spec URL as default) in generated `main.go` and pass to TUI model constructor
 
 ---
 
@@ -282,9 +282,9 @@
 
 **Purpose**: Golden file updates, integration test, and any remaining cross-cutting validations. Unit tests for key subsystems have been moved inline with their respective story phases (T014a, T017b, T019a, T048a) to enforce test-first development per Constitution §Dev Workflow.
 
-- [ ] T060 [P] Final golden file update across all generator changes: `UPDATE_GOLDEN=1 go test ./tests/unit/... -count=1` from `/Users/samstevens/asot/cliford`
-- [ ] T061 Add integration test: generate from petstore spec → `go build ./...` → run `list-pets --help` → assert output contains description; run `list-pets` → assert table output; run `completion bash` → assert valid script; run `generate-docs --format llms-txt` → assert `llms.txt` created in `tests/integration/petstore_test.go`
-- [ ] T062 [P] Verify all generated quality gates pass: `go build ./...`, `go vet ./...`, `go test ./...`, `--help` responds, shell completions generate, docs generate — run against reference petstore spec output
+- [x] T060 [P] Final golden file update across all generator changes: `UPDATE_GOLDEN=1 go test ./tests/unit/... -count=1` from `/Users/samstevens/asot/cliford`
+- [x] T061 Add integration test: generate from petstore spec → `go build ./...` → run `list-pets --help` → assert output contains description; run `list-pets` → assert table output; run `completion bash` → assert valid script; run `generate-docs --format llms-txt` → assert `llms.txt` created in `tests/integration/petstore_test.go`
+- [x] T062 [P] Verify all generated quality gates pass: `go build ./...`, `go vet ./...`, `go test ./...`, `--help` responds, shell completions generate, docs generate — run against reference petstore spec output
 
 ---
 

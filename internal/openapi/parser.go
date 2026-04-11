@@ -332,6 +332,13 @@ func convertSchema(s *openapi3.Schema) registry.SchemaMeta {
 		Description: s.Description,
 	}
 
+	// Check for x-cliford-display extension
+	if ext, ok := s.Extensions["x-cliford-display"]; ok {
+		if v, ok := ext.(bool); ok && v {
+			sm.Display = true
+		}
+	}
+
 	if len(s.Enum) > 0 {
 		sm.Enum = make([]any, len(s.Enum))
 		copy(sm.Enum, s.Enum)

@@ -59,6 +59,12 @@ type Options struct {
 	// RetryEnabled controls whether retry middleware is active.
 	RetryEnabled bool
 
+	// GlobalHeaders are injected into every request (from config global_params.headers).
+	GlobalHeaders map[string]string
+
+	// GlobalQueryParams are appended to every request URL (from config global_params.query).
+	GlobalQueryParams map[string]string
+
 	// VerboseFlag is a pointer to the --verbose CLI flag.
 	// When non-nil and true, request/response details are logged to stderr.
 	VerboseFlag *bool
@@ -113,7 +119,16 @@ func NewHTTPClient(opts Options) *http.Client {
 		}
 	}
 
-	// Layer 3: Hooks (before_request / after_response)
+	// Layer 3: Global params injection (headers + query from config)
+	if len(opts.GlobalHeaders) > 0 || len(opts.GlobalQueryParams) > 0 {
+		transport = &globalParamsTransport{
+			base:    transport,
+			headers: opts.GlobalHeaders,
+			query:   opts.GlobalQueryParams,
+		}
+	}
+
+	// Layer 4: Hooks (before_request / after_response)
 	if opts.HooksEnabled && (len(opts.BeforeRequestHooks) > 0 || len(opts.AfterResponseHooks) > 0) {
 		runner := hooks.NewRunner(opts.BeforeRequestHooks, opts.AfterResponseHooks)
 		transport = &hooksTransport{
@@ -164,6 +179,32 @@ func (t *hooksTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	elapsed := time.Since(start)
 	t.runner.RunAfter(req, resp, elapsed, err)
 	return resp, err
+}
+
+// globalParamsTransport injects configured global headers and query params into every request.
+// Per-operation values take precedence (existing headers/params are not overwritten).
+type globalParamsTransport struct {
+	base    http.RoundTripper
+	headers map[string]string
+	query   map[string]string
+}
+
+func (t *globalParamsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	for k, v := range t.headers {
+		if req.Header.Get(k) == "" { // Don't overwrite per-operation headers
+			req.Header.Set(k, v)
+		}
+	}
+	if len(t.query) > 0 {
+		q := req.URL.Query()
+		for k, v := range t.query {
+			if q.Get(k) == "" { // Don't overwrite per-operation params
+				q.Set(k, v)
+			}
+		}
+		req.URL.RawQuery = q.Encode()
+	}
+	return t.base.RoundTrip(req)
 }
 `, g.pkgPath, g.pkgPath, g.pkgPath)
 

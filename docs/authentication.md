@@ -1,89 +1,148 @@
-# Authentication
+# How to Set Up Authentication
 
-Generated apps support all standard OpenAPI security schemes with secure
-credential storage and multi-profile management.
+This guide covers configuring authentication for generated CLI applications,
+including credential storage, environment variables, OAuth2, and multi-profile
+management.
 
-## Supported Methods
+## Supported methods
 
-| Method | OpenAPI Type | Automatic |
-|--------|-------------|-----------|
-| API Key (header/query) | `apiKey` | Yes |
-| HTTP Basic | `http` (basic) | Yes |
-| Bearer Token | `http` (bearer) | Yes |
-| OAuth 2.0 | `oauth2` | Yes (AuthCode, ClientCreds, DeviceCode) |
-| OpenID Connect | `openIdConnect` | Via hooks |
-| mTLS | Custom | Via hooks |
+| Method | OpenAPI Type | Header Format |
+|--------|-------------|---------------|
+| API Key (header or query) | `apiKey` | Custom header or query parameter |
+| HTTP Basic | `http` (scheme: basic) | `Authorization: Basic <base64>` |
+| Bearer Token | `http` (scheme: bearer) | `Authorization: Bearer <token>` |
+| OAuth 2.0 Client Credentials | `oauth2` (clientCredentials) | `Authorization: Bearer <token>` |
 
-Methods are auto-detected from your OpenAPI spec's `securitySchemes`.
+Methods are detected automatically from your OpenAPI spec's `securitySchemes`.
 
-## Auth Commands
+## Credential resolution order
 
-```bash
-# Login interactively
-myapp auth login
+When a request is made, credentials are resolved through a 5-tier chain.
+The first tier that provides a value wins:
 
-# Login with specific method
-myapp auth login --method bearer --token "sk-..."
-myapp auth login --method apiKey --api-key "key-..."
-myapp auth login --method basic --username admin --password secret
-myapp auth login --method oauth2 --token "access-token-..."
+1. **CLI flags** (`--token`, `--api-key`)
+2. **Environment variables** (`<APP>_<SCHEME>_<TYPE>`)
+3. **OS keychain** (macOS Keychain, Linux Secret Service, Windows Credential Manager)
+4. **Encrypted file** (AES-256-GCM, stored in `~/.config/<app>/auth/`)
+5. **Config file** (YAML via Viper, `auth.<scheme>.token`)
 
-# Non-interactive login (for CI/scripts)
-myapp auth login --method bearer --token "$API_TOKEN" -y
+If no credentials are found for a required scheme, the app prints an error
+with the scheme name, type, and the exact environment variable to set:
 
-# Check auth state (secrets are redacted)
-myapp auth status
-# Profile: default
-# Method:  bearer
-# Token:   sk-t...cdef
-
-# Logout
-myapp auth logout
-
-# Force refresh OAuth token
-myapp auth refresh
+```
+Error: authentication required
+  Scheme: BearerAuth (bearer)
+  Configure via: PETSTORE_BEARERAUTH_TOKEN env var
+              or: petstore auth login
 ```
 
-## Credential Storage
+## Environment variable naming
 
-Credentials are stored using a priority chain:
+Environment variable names follow the pattern `<APP>_<SCHEME>_<TYPE>`:
 
-1. **OS Keychain** (preferred) — macOS Keychain, Windows Credential Manager,
-   Linux Secret Service
-2. **Encrypted file** (fallback) — AES-256-GCM encrypted, stored in
-   `~/.config/<app>/auth/`. Used in containers and CI where no keychain exists.
-   A warning is printed when this fallback is used.
-3. **Environment variables** (runtime only) — `<PREFIX>_API_KEY`,
-   `<PREFIX>_BEARER_TOKEN`, etc.
-4. **CLI flags** (per-command) — `--token`, `--api-key`, etc.
+| Scheme Type | Scheme Name | Environment Variable |
+|-------------|-------------|---------------------|
+| Bearer token | `BearerAuth` | `PETSTORE_BEARERAUTH_TOKEN` |
+| API key | `ApiKeyAuth` | `PETSTORE_APIKEYAUTH_API_KEY` |
+| Basic auth | `BasicAuth` | `PETSTORE_BASICAUTH_USERNAME`, `PETSTORE_BASICAUTH_PASSWORD` |
+| OAuth2 | `OAuth2` | `PETSTORE_OAUTH2_TOKEN` |
 
-Credential resolution at request time:
-**Flags > Environment > Keychain/File > Config**
+The app prefix is derived from the `envVarPrefix` in `cliford.yaml` (or the
+app name, uppercased). The scheme name comes from the `securitySchemes` key
+in your OpenAPI spec, uppercased with special characters replaced by
+underscores.
 
-## Profiles
+## How to authenticate with environment variables
 
-Manage multiple environments (production, staging, local) with profiles:
+```bash
+# Bearer token
+export PETSTORE_BEARERAUTH_TOKEN="sk-your-token-here"
+./petstore pets list
+
+# API key
+export PETSTORE_APIKEYAUTH_API_KEY="key-abc123"
+./petstore pets list
+
+# Basic auth
+export PETSTORE_BASICAUTH_USERNAME="admin"
+export PETSTORE_BASICAUTH_PASSWORD="secret"
+./petstore pets list
+```
+
+## How to authenticate interactively
+
+```bash
+# Interactive login (prompts for values)
+./petstore auth login
+
+# Login with a specific method
+./petstore auth login --method bearer --token "sk-..."
+./petstore auth login --method apiKey --api-key "key-..."
+./petstore auth login --method basic --username admin --password secret
+
+# Non-interactive login (for CI/scripts)
+./petstore auth login --method bearer --token "$API_TOKEN" -y
+
+# Check current auth state (secrets are truncated)
+./petstore auth status
+
+# Clear stored credentials
+./petstore auth logout
+```
+
+Credentials stored via `auth login` are saved to the OS keychain when
+available, falling back to an encrypted file. A warning is printed when the
+encrypted file fallback is used.
+
+## How to set up OAuth 2.0 client credentials
+
+For APIs using OAuth 2.0 client credentials, set three environment variables:
+
+```bash
+export PETSTORE_OAUTH2_CLIENT_ID="your-client-id"
+export PETSTORE_OAUTH2_CLIENT_SECRET="your-client-secret"
+export PETSTORE_OAUTH2_TOKEN_URL="https://auth.example.com/oauth/token"
+```
+
+The app automatically exchanges the client ID and secret for an access token,
+caches it in memory, and refreshes it 60 seconds before expiry. No manual
+token management is needed.
+
+If you already have an access token, set it directly:
+
+```bash
+export PETSTORE_OAUTH2_TOKEN="your-access-token"
+```
+
+## How to manage multiple profiles
+
+Use profiles to switch between environments (production, staging, local):
 
 ```bash
 # Login to the staging profile
-myapp auth login --profile staging --token "staging-token"
+./petstore auth login --profile staging --token "staging-token"
 
 # Switch active profile
-myapp auth switch staging
-
-# Check which profile is active
-myapp auth status
+./petstore auth switch staging
 
 # Configure server URL per profile
-myapp config set profiles.staging.server.url https://staging.api.example.com
+./petstore config set profiles.staging.server.url https://staging.api.example.com
+
+# Check which profile is active
+./petstore auth status
 ```
 
-Each profile has its own:
-- Server URL
-- Auth method
-- Stored credentials
+Each profile has its own server URL, auth method, and stored credentials.
 
-## Per-Operation Security
+## Security behavior
+
+- All debug and verbose output redacts `Authorization` headers, API keys,
+  and any header whose name contains `secret`, `token`, `key`, or `password`.
+  Redacted values appear as `[REDACTED]`.
+- Token display in `auth status` is truncated: `sk-t...cdef`.
+- The `--verbose` flag shows which headers are sent without revealing secrets.
+
+## Per-operation security
 
 OpenAPI specs can define different security per operation:
 
@@ -91,34 +150,11 @@ OpenAPI specs can define different security per operation:
 paths:
   /public/health:
     get:
-      security: []         # No auth required
+      security: []           # No auth required
   /admin/users:
     get:
       security:
-        - bearerAuth: []   # Requires bearer token
+        - bearerAuth: []     # Requires bearer token
 ```
 
-Cliford respects these: operations with `security: []` won't prompt for or
-attach credentials.
-
-## Security Practices
-
-- Credentials are **never logged** — all debug output, dry-run output, and
-  error messages automatically redact Authorization headers, API keys, and
-  tokens.
-- **HTTPS warnings** — sending credentials over HTTP triggers a warning
-  (except for `localhost`).
-- Token display is always truncated: `sk-t...cdef`
-- The `auth status` command shows auth state without revealing full secrets.
-
-## Environment Variables
-
-For CI/CD and scripting, set credentials via environment variables:
-
-```bash
-export MYAPP_BEARER_TOKEN="sk-..."
-export MYAPP_API_KEY="key-..."
-export MYAPP_SERVER_URL="https://api.example.com"
-
-myapp pets list  # Credentials attached automatically
-```
+Operations with `security: []` do not prompt for or attach credentials.

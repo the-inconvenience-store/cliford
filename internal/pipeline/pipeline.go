@@ -337,12 +337,16 @@ import (
 	"%s/internal/auth"
 	"%s/internal/cli"
 	"%s/internal/client"
+	"%s/internal/sdk"
+
+	"github.com/spf13/viper"
 )
 
 var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
+	version  = "dev"
+	commit   = "none"
+	date     = "unknown"
+	appTitle = "%s"
 )
 
 func main() {
@@ -354,14 +358,42 @@ func main() {
 	opts := client.DefaultOptions()
 	opts.AuthResolver = resolver
 	opts.VerboseFlag = cli.VerboseFlag()
+
+	// FeaturesConfig: timeout override from Viper / env
+	if timeout := viper.GetDuration("request_timeout"); timeout > 0 {
+		opts.BaseTimeout = timeout
+	}
+
+	// FeaturesConfig: retry overrides from Viper
+	if !viper.GetBool("features.retry.enabled") && viper.IsSet("features.retry.enabled") {
+		opts.RetryEnabled = false
+	}
+	if maxAttempts := viper.GetInt("features.retry.max_attempts"); maxAttempts > 0 {
+		cfg := sdk.DefaultRetryConfig()
+		cfg.MaxAttempts = maxAttempts
+		if interval := viper.GetDuration("features.retry.initial_interval"); interval > 0 {
+			cfg.InitialInterval = interval
+		}
+		opts.RetryConfig = &cfg
+	}
+
+	// Load global params from config (global_params.headers / global_params.query)
+	opts.GlobalHeaders = viper.GetStringMapString("global_params.headers")
+	opts.GlobalQueryParams = viper.GetStringMapString("global_params.query")
+
 	cli.SetAPIClient(client.NewHTTPClient(opts))
+
+	// Apply server_url from config/env if --server flag not used
+	if serverOverride := viper.GetString("server_url"); serverOverride != "" {
+		cli.SetDefaultServerURL(serverOverride)
+	}
 
 	rootCmd := cli.RootCmd("%s", fmt.Sprintf("%%s (commit: %%s, built: %%s)", version, commit, date))
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
-`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.AppName, p.Config.AppName)
+`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.AppName, p.Config.AppName, p.Config.AppName)
 
 	cmdDir := filepath.Join(p.Config.OutputDir, "cmd", p.Config.AppName)
 	if err := os.MkdirAll(cmdDir, 0o755); err != nil {

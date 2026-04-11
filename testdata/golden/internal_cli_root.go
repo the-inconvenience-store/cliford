@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -52,11 +54,12 @@ func RootCmd(appName string, version string) *cobra.Command {
 	pf.BoolVar(&noInteractive, "no-interactive", false, "Disable interactive prompts")
 	pf.BoolVar(&tuiMode, "tui", false, "Launch full TUI mode")
 
-	root.AddCommand(systemCmd())
 	root.AddCommand(petsCmd())
+	root.AddCommand(systemCmd())
 	root.AddCommand(usersCmd())
 	root.AddCommand(authCmd())
 	root.AddCommand(configCmd())
+	root.AddCommand(GenerateDocsCmd())
 
 	root.Long = root.Short + "\n\nAvailable servers:"
 	root.Long += "\n  --server https://api.petstore.example.com/v1  (Production)"
@@ -76,11 +79,64 @@ func FormatOutput(data any, format string) error {
 	case "yaml":
 		enc := yaml.NewEncoder(os.Stdout)
 		return enc.Encode(data)
+	case "table":
+		return formatTable(data)
 	default:
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(data)
 	}
+}
+
+// formatTable renders an array of objects as a text table.
+func formatTable(data any) error {
+	items, ok := data.([]any)
+	if !ok {
+		// Not an array — fall back to JSON
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(data)
+	}
+	if len(items) == 0 {
+		fmt.Println("No results.")
+		return nil
+	}
+
+	// Collect column headers from the first row
+	firstRow, ok := items[0].(map[string]any)
+	if !ok {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(data)
+	}
+	var headers []string
+	for k := range firstRow {
+		headers = append(headers, k)
+	}
+	sort.Strings(headers)
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	// Print headers
+	fmt.Fprintln(w, strings.Join(headers, "\t"))
+	// Print separator
+	seps := make([]string, len(headers))
+	for i, h := range headers {
+		seps[i] = strings.Repeat("-", len(h))
+	}
+	fmt.Fprintln(w, strings.Join(seps, "\t"))
+	// Print rows
+	for _, item := range items {
+		row, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		vals := make([]string, len(headers))
+		for i, h := range headers {
+			vals[i] = fmt.Sprintf("%v", row[h])
+		}
+		fmt.Fprintln(w, strings.Join(vals, "\t"))
+	}
+	return w.Flush()
 }
 
 // SetAPIClient sets the shared HTTP client used by all generated commands.
@@ -95,6 +151,14 @@ func GetAPIClient() *http.Client {
 		return apiClient
 	}
 	return &http.Client{Timeout: 30 * time.Second}
+}
+
+// SetDefaultServerURL sets the server URL from config/env.
+// This is overridden by the --server CLI flag if provided.
+func SetDefaultServerURL(url string) {
+	if serverURL == "" {
+		serverURL = url
+	}
 }
 
 // VerboseFlag returns a pointer to the verbose/debug mode flag.

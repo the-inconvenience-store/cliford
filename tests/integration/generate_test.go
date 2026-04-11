@@ -33,7 +33,7 @@ func TestGeneratePetstore(t *testing.T) {
 		t.Fatalf("pipeline failed: %v", err)
 	}
 
-	// Verify expected files exist
+	// Verify expected files exist (including new Phase 2-20 files)
 	expectedFiles := []string{
 		"cmd/petstore/main.go",
 		"go.mod",
@@ -41,14 +41,21 @@ func TestGeneratePetstore(t *testing.T) {
 		"internal/cli/pets.go",
 		"internal/cli/users.go",
 		"internal/cli/system.go",
+		"internal/cli/generate_docs.go",
 		"internal/sdk/sdk.gen.go",
 		"internal/config/config.go",
 		"internal/auth/middleware.go",
 		"internal/auth/keychain.go",
+		"internal/auth/resolver.go",
+		"internal/auth/profiles.go",
+		"internal/client/factory.go",
+		"internal/hooks/runner.go",
 		"internal/hybrid/mode.go",
 		"internal/sdk/pagination.go",
 		"internal/sdk/retry.go",
 		"internal/sdk/errors.go",
+		"internal/sdk/verbose.go",
+		"docs/llms.txt",
 	}
 
 	for _, f := range expectedFiles {
@@ -91,10 +98,15 @@ func TestGeneratePetstore(t *testing.T) {
 	}
 
 	helpStr := string(helpOut)
-	for _, expected := range []string{"pets", "users", "system", "auth", "config"} {
+	for _, expected := range []string{"pets", "users", "system", "auth", "config", "generate-docs", "completion"} {
 		if !strings.Contains(helpStr, expected) {
 			t.Errorf("--help output missing %q", expected)
 		}
+	}
+
+	// Verify --verbose/-v flag is present
+	if !strings.Contains(helpStr, "--verbose") && !strings.Contains(helpStr, "-v") {
+		t.Error("--help missing --verbose flag")
 	}
 
 	// Verify stutter removal: should be "pets list" not "pets list-pets"
@@ -104,6 +116,30 @@ func TestGeneratePetstore(t *testing.T) {
 	}
 	if !strings.Contains(string(petsHelp), "list") {
 		t.Error("'list' command not found under pets")
+	}
+
+	// Verify generate-docs subcommand exists
+	docsHelp, _ := exec.Command(binary, "generate-docs", "--help").CombinedOutput()
+	if !strings.Contains(string(docsHelp), "--format") {
+		t.Error("generate-docs missing --format flag")
+	}
+
+	// Verify completion subcommand works
+	compOut, err := exec.Command(binary, "completion", "bash").CombinedOutput()
+	if err != nil {
+		t.Errorf("completion bash failed: %v", err)
+	}
+	if !strings.Contains(string(compOut), "bash completion") {
+		// Cobra generates bash completion with this header
+		if len(compOut) < 100 {
+			t.Error("completion bash output too short — likely not a valid completion script")
+		}
+	}
+
+	// Verify version flag works
+	verOut, _ := exec.Command(binary, "--version").CombinedOutput()
+	if !strings.Contains(string(verOut), "dev") {
+		t.Error("--version output missing version string")
 	}
 }
 
@@ -133,6 +169,18 @@ func TestGenerateMultiAuth(t *testing.T) {
 	oauthPath := filepath.Join(outputDir, "internal", "auth", "oauth.go")
 	if _, err := os.Stat(oauthPath); os.IsNotExist(err) {
 		t.Error("OAuth file not generated for spec with oauth2 scheme")
+	}
+
+	// Verify resolver generated with scheme configs
+	resolverPath := filepath.Join(outputDir, "internal", "auth", "resolver.go")
+	if _, err := os.Stat(resolverPath); os.IsNotExist(err) {
+		t.Error("Resolver file not generated")
+	}
+
+	// Verify client factory generated
+	factoryPath := filepath.Join(outputDir, "internal", "client", "factory.go")
+	if _, err := os.Stat(factoryPath); os.IsNotExist(err) {
+		t.Error("Client factory file not generated")
 	}
 
 	// Compile

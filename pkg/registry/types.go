@@ -75,6 +75,7 @@ type SchemaMeta struct {
 	Nullable    bool
 	Enum        []any  // Allowed values for this field
 	Description string // Human-readable description
+	Display     bool   // If true, show this property as a default table column (x-cliford-display)
 }
 
 // RequestBodyMeta describes the request body for an operation.

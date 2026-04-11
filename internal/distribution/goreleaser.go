@@ -13,11 +13,19 @@ type GoReleaserGenerator struct {
 	outputDir string
 	appName   string
 	pkgPath   string
+	owner     string
 }
 
 // NewGoReleaserGenerator creates a GoReleaser config generator.
 func NewGoReleaserGenerator(outputDir, appName, pkgPath string) *GoReleaserGenerator {
-	return &GoReleaserGenerator{outputDir: outputDir, appName: appName, pkgPath: pkgPath}
+	return &GoReleaserGenerator{outputDir: outputDir, appName: appName, pkgPath: pkgPath, owner: appName}
+}
+
+// SetOwner sets the GitHub repo owner for release configuration.
+func (g *GoReleaserGenerator) SetOwner(owner string) {
+	if owner != "" {
+		g.owner = owner
+	}
 }
 
 // Generate produces .goreleaser.yaml and the GitHub Actions release workflow.
@@ -55,6 +63,7 @@ builds:
       - -X main.version={{.Version}}
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
+      - -X main.appTitle=%s
 
 archives:
   - id: default
@@ -78,11 +87,11 @@ changelog:
 
 release:
   github:
-    owner: OWNER
+    owner: %s
     name: %s
   draft: false
   prerelease: auto
-`, g.appName, g.appName, g.appName, g.appName, g.appName)
+`, g.appName, g.appName, g.appName, g.appName, g.appName, g.owner, g.appName)
 
 	return os.WriteFile(filepath.Join(g.outputDir, ".goreleaser.yaml"), []byte(config), 0o644)
 }

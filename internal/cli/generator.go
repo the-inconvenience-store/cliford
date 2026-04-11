@@ -85,7 +85,9 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	"fmt"`)
 	sb.Line(`	"net/http"`)
 	sb.Line(`	"os"`)
+	sb.Line(`	"sort"`)
 	sb.Line(`	"strings"`)
+	sb.Line(`	"text/tabwriter"`)
 	sb.Line(`	"time"`)
 	sb.Line("")
 	sb.Line(`	"github.com/spf13/cobra"`)
@@ -147,11 +149,18 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	pf.BoolVar(&tuiMode, "tui", false, "Launch full TUI mode")`)
 	sb.Line("")
 
+	// Sort tags for deterministic output
+	var sortedTags []string
 	for tag := range reg.TagGroups {
+		sortedTags = append(sortedTags, tag)
+	}
+	sort.Strings(sortedTags)
+	for _, tag := range sortedTags {
 		sb.Linef("	root.AddCommand(%sCmd())", toCamelCase(tag))
 	}
 	sb.Line("	root.AddCommand(authCmd())")
 	sb.Line("	root.AddCommand(configCmd())")
+	sb.Line("	root.AddCommand(GenerateDocsCmd())")
 
 	if g.customCodeRegions {
 		sb.Line("")
@@ -188,11 +197,62 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	case "yaml":`)
 	sb.Line("		enc := yaml.NewEncoder(os.Stdout)")
 	sb.Line("		return enc.Encode(data)")
+	sb.Line(`	case "table":`)
+	sb.Line("		return formatTable(data)")
 	sb.Line("	default:")
 	sb.Line("		enc := json.NewEncoder(os.Stdout)")
 	sb.Line(`		enc.SetIndent("", "  ")`)
 	sb.Line("		return enc.Encode(data)")
 	sb.Line("	}")
+	sb.Line("}")
+	sb.Line("")
+	sb.Line("// formatTable renders an array of objects as a text table.")
+	sb.Line("func formatTable(data any) error {")
+	sb.Line("	items, ok := data.([]any)")
+	sb.Line("	if !ok {")
+	sb.Line("		// Not an array — fall back to JSON")
+	sb.Line("		enc := json.NewEncoder(os.Stdout)")
+	sb.Line(`		enc.SetIndent("", "  ")`)
+	sb.Line("		return enc.Encode(data)")
+	sb.Line("	}")
+	sb.Line("	if len(items) == 0 {")
+	sb.Line(`		fmt.Println("No results.")`)
+	sb.Line("		return nil")
+	sb.Line("	}")
+	sb.Line("")
+	sb.Line("	// Collect column headers from the first row")
+	sb.Line("	firstRow, ok := items[0].(map[string]any)")
+	sb.Line("	if !ok {")
+	sb.Line("		enc := json.NewEncoder(os.Stdout)")
+	sb.Line(`		enc.SetIndent("", "  ")`)
+	sb.Line("		return enc.Encode(data)")
+	sb.Line("	}")
+	sb.Line("	var headers []string")
+	sb.Line("	for k := range firstRow {")
+	sb.Line("		headers = append(headers, k)")
+	sb.Line("	}")
+	sb.Line("	sort.Strings(headers)")
+	sb.Line("")
+	sb.Line("	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)")
+	sb.Line("	// Print headers")
+	sb.Line(`	fmt.Fprintln(w, strings.Join(headers, "\t"))`)
+	sb.Line("	// Print separator")
+	sb.Line("	seps := make([]string, len(headers))")
+	sb.Line("	for i, h := range headers {")
+	sb.Line("		seps[i] = strings.Repeat(\"-\", len(h))")
+	sb.Line("	}")
+	sb.Line(`	fmt.Fprintln(w, strings.Join(seps, "\t"))`)
+	sb.Line("	// Print rows")
+	sb.Line("	for _, item := range items {")
+	sb.Line("		row, ok := item.(map[string]any)")
+	sb.Line("		if !ok { continue }")
+	sb.Line("		vals := make([]string, len(headers))")
+	sb.Line("		for i, h := range headers {")
+	sb.Line(`			vals[i] = fmt.Sprintf("%v", row[h])`)
+	sb.Line("		}")
+	sb.Line(`		fmt.Fprintln(w, strings.Join(vals, "\t"))`)
+	sb.Line("	}")
+	sb.Line("	return w.Flush()")
 	sb.Line("}")
 
 	// SetAPIClient function
@@ -209,6 +269,14 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("		return apiClient")
 	sb.Line("	}")
 	sb.Line(`	return &http.Client{Timeout: 30 * time.Second}`)
+	sb.Line("}")
+	sb.Line("")
+	sb.Line("// SetDefaultServerURL sets the server URL from config/env.")
+	sb.Line("// This is overridden by the --server CLI flag if provided.")
+	sb.Line("func SetDefaultServerURL(url string) {")
+	sb.Line("	if serverURL == \"\" {")
+	sb.Line("		serverURL = url")
+	sb.Line("	}")
 	sb.Line("}")
 	sb.Line("")
 	sb.Line("// VerboseFlag returns a pointer to the verbose/debug mode flag.")
@@ -304,6 +372,10 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	for _, p := range op.Parameters {
 		existingParamFlags[p.FlagName] = true
 	}
+	// Also reserve "body" flag name to avoid collision with --body JSON flag
+	if op.RequestBody != nil {
+		existingParamFlags["body"] = true
+	}
 
 	// Determine if we have body properties to expand
 	hasBodyProps := op.RequestBody != nil && len(op.RequestBody.Schema.Properties) > 0
@@ -338,7 +410,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Linef("		Use:   %q,", op.CLICommandName)
 	sb.Linef("		Short: %q,", op.Summary)
 	if op.Description != "" {
-		sb.Linef("		Long:  %q,", op.Description)
+		sb.Linef("		Long:  %q,", wrapText(op.Description, 80))
 	}
 	if len(op.CLIAliases) > 0 {
 		sb.Linef("		Aliases: []string{%s},", quoteJoin(op.CLIAliases))
@@ -371,6 +443,24 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 				sb.Line("				}")
 			}
 		}
+		sb.Line("			}")
+		sb.Line("")
+	}
+
+	// Confirmation prompt for destructive operations
+	needsConfirm := op.CLIConfirm || op.Method == "DELETE"
+	if needsConfirm {
+		confirmMsg := op.CLIConfirmMsg
+		if confirmMsg == "" {
+			confirmMsg = fmt.Sprintf("Are you sure you want to %s?", op.CLICommandName)
+		}
+		sb.Line("			// Confirm destructive operation")
+		sb.Line("			if !yesMode {")
+		sb.Linef("				answer := promptValue(%q)", confirmMsg+" [y/N]: ")
+		sb.Line("				if answer != \"y\" && answer != \"Y\" && answer != \"yes\" {")
+		sb.Line(`					fmt.Fprintln(os.Stderr, "Aborted.")`)
+		sb.Line("					return nil")
+		sb.Line("				}")
 		sb.Line("			}")
 		sb.Line("")
 	}
@@ -944,6 +1034,33 @@ func enumStrings(enum []any) []string {
 		result[i] = fmt.Sprintf("%v", e)
 	}
 	return result
+}
+
+// wrapText wraps text at the given column width, preserving existing newlines.
+func wrapText(text string, width int) string {
+	if len(text) <= width {
+		return text
+	}
+	var result strings.Builder
+	for _, paragraph := range strings.Split(text, "\n") {
+		if result.Len() > 0 {
+			result.WriteByte('\n')
+		}
+		line := ""
+		for _, word := range strings.Fields(paragraph) {
+			if line == "" {
+				line = word
+			} else if len(line)+1+len(word) > width {
+				result.WriteString(line)
+				result.WriteByte('\n')
+				line = word
+			} else {
+				line += " " + word
+			}
+		}
+		result.WriteString(line)
+	}
+	return result.String()
 }
 
 func toSnakeCase(s string) string {
