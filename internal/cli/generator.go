@@ -794,6 +794,15 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Line("				for k, v := range req.Header {")
 	sb.Line(`					fmt.Fprintf(os.Stdout, "%s: %s\n", k, strings.Join(v, ", "))`)
 	sb.Line("				}")
+	if op.RequestBody != nil {
+		sb.Line("				if req.Body != nil {")
+		sb.Line(`					fmt.Fprintln(os.Stdout)`)
+		sb.Line("					bodyBytes, _ := io.ReadAll(req.Body)")
+		sb.Line("					req.Body.Close()")
+		sb.Line("					os.Stdout.Write(bodyBytes)")
+		sb.Line(`					fmt.Fprintln(os.Stdout)`)
+		sb.Line("				}")
+	}
 	sb.Line("				return nil")
 	sb.Line("			}")
 	sb.Line("")
