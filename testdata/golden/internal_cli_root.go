@@ -179,3 +179,33 @@ func promptValue(label string) string {
 	fmt.Scanln(&line)
 	return strings.TrimSpace(line)
 }
+
+// spinner displays a small loading indicator on stderr while a function runs.
+// It only shows when stderr is a terminal. Returns the function's results.
+func withSpinner[T any](label string, fn func() (T, error)) (T, error) {
+	fi, _ := os.Stderr.Stat()
+	if fi == nil || (fi.Mode()&os.ModeCharDevice) == 0 || noInteractive || agentMode {
+		return fn()
+	}
+
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	done := make(chan struct{})
+	go func() {
+		i := 0
+		for {
+			select {
+			case <-done:
+				fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", len(label)+4))
+				return
+			default:
+				fmt.Fprintf(os.Stderr, "\r%s %s", frames[i%len(frames)], label)
+				i++
+				time.Sleep(80 * time.Millisecond)
+			}
+		}
+	}()
+
+	result, err := fn()
+	close(done)
+	return result, err
+}
