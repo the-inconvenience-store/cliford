@@ -13,6 +13,22 @@ import (
 	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
+// SpinnerConfig controls the loading spinner in generated apps.
+type SpinnerConfig struct {
+	Enabled    bool
+	Frames     []string
+	IntervalMs int
+}
+
+// DefaultSpinnerConfig returns the default spinner settings.
+func DefaultSpinnerConfig() SpinnerConfig {
+	return SpinnerConfig{
+		Enabled:    true,
+		Frames:     []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
+		IntervalMs: 80,
+	}
+}
+
 // Generator produces Cobra CLI code from the Operation Registry.
 type Generator struct {
 	engine            *codegen.Engine
@@ -22,6 +38,7 @@ type Generator struct {
 	envPrefix         string
 	customCodeRegions bool
 	generateTUI       bool
+	spinner           SpinnerConfig
 }
 
 // NewGenerator creates a CLI generator.
@@ -31,7 +48,13 @@ func NewGenerator(engine *codegen.Engine, outputDir, appName, envPrefix string) 
 		outputDir: outputDir,
 		appName:   appName,
 		envPrefix: envPrefix,
+		spinner:   DefaultSpinnerConfig(),
 	}
+}
+
+// SetSpinnerConfig sets the loading spinner configuration.
+func (g *Generator) SetSpinnerConfig(cfg SpinnerConfig) {
+	g.spinner = cfg
 }
 
 // SetCustomCodeRegions enables custom code region markers in generated output.
@@ -297,36 +320,53 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("	fmt.Scanln(&line)")
 	sb.Line("	return strings.TrimSpace(line)")
 	sb.Line("}")
-	sb.Line("")
-	sb.Line("// spinner displays a small loading indicator on stderr while a function runs.")
-	sb.Line("// It only shows when stderr is a terminal. Returns the function's results.")
-	sb.Line("func withSpinner[T any](label string, fn func() (T, error)) (T, error) {")
-	sb.Line("	fi, _ := os.Stderr.Stat()")
-	sb.Line("	if fi == nil || (fi.Mode()&os.ModeCharDevice) == 0 || noInteractive || agentMode {")
-	sb.Line("		return fn()")
-	sb.Line("	}")
-	sb.Line("")
-	sb.Line("	frames := []string{\"⠋\", \"⠙\", \"⠹\", \"⠸\", \"⠼\", \"⠴\", \"⠦\", \"⠧\", \"⠇\", \"⠏\"}")
-	sb.Line("	done := make(chan struct{})")
-	sb.Line("	go func() {")
-	sb.Line("		i := 0")
-	sb.Line("		for {")
-	sb.Line("			select {")
-	sb.Line("			case <-done:")
-	sb.Line(`				fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", len(label)+4))`)
-	sb.Line("				return")
-	sb.Line("			default:")
-	sb.Line(`				fmt.Fprintf(os.Stderr, "\r%s %s", frames[i%len(frames)], label)`)
-	sb.Line("				i++")
-	sb.Line("				time.Sleep(80 * time.Millisecond)")
-	sb.Line("			}")
-	sb.Line("		}")
-	sb.Line("	}()")
-	sb.Line("")
-	sb.Line("	result, err := fn()")
-	sb.Line("	close(done)")
-	sb.Line("	return result, err")
-	sb.Line("}")
+	// Spinner: configurable loading animation
+	if g.spinner.Enabled {
+		// Build frames literal
+		var frameParts []string
+		for _, f := range g.spinner.Frames {
+			frameParts = append(frameParts, fmt.Sprintf("%q", f))
+		}
+		framesLiteral := strings.Join(frameParts, ", ")
+
+		sb.Line("")
+		sb.Line("// withSpinner displays a loading indicator on stderr while a function runs.")
+		sb.Line("// It only shows when stderr is a terminal. Returns the function's results.")
+		sb.Line("func withSpinner[T any](label string, fn func() (T, error)) (T, error) {")
+		sb.Line("	fi, _ := os.Stderr.Stat()")
+		sb.Line("	if fi == nil || (fi.Mode()&os.ModeCharDevice) == 0 || noInteractive || agentMode {")
+		sb.Line("		return fn()")
+		sb.Line("	}")
+		sb.Line("")
+		sb.Linef("	frames := []string{%s}", framesLiteral)
+		sb.Line("	done := make(chan struct{})")
+		sb.Line("	go func() {")
+		sb.Line("		i := 0")
+		sb.Line("		for {")
+		sb.Line("			select {")
+		sb.Line("			case <-done:")
+		sb.Line(`				fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", len(label)+4))`)
+		sb.Line("				return")
+		sb.Line("			default:")
+		sb.Line(`				fmt.Fprintf(os.Stderr, "\r%s %s", frames[i%len(frames)], label)`)
+		sb.Line("				i++")
+		sb.Linef("				time.Sleep(%d * time.Millisecond)", g.spinner.IntervalMs)
+		sb.Line("			}")
+		sb.Line("		}")
+		sb.Line("	}()")
+		sb.Line("")
+		sb.Line("	result, err := fn()")
+		sb.Line("	close(done)")
+		sb.Line("	return result, err")
+		sb.Line("}")
+	} else {
+		// When spinner is disabled, generate a pass-through withSpinner
+		sb.Line("")
+		sb.Line("// withSpinner is a no-op when spinner is disabled in cliford.yaml.")
+		sb.Line("func withSpinner[T any](_ string, fn func() (T, error)) (T, error) {")
+		sb.Line("	return fn()")
+		sb.Line("}")
+	}
 
 	return writeFormatted(filepath.Join(cliDir, "root.go"), sb.String())
 }

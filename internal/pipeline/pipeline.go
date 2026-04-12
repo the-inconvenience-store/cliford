@@ -59,6 +59,11 @@ type Config struct {
 	PackageName  string
 	EnvVarPrefix string
 	AppVersion   string
+
+	// Spinner config for generated CLI loading animation
+	SpinnerEnabled bool
+	SpinnerFrames  []string
+	SpinnerMs      int
 }
 
 // Pipeline orchestrates the full code generation process.
@@ -185,6 +190,13 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 	cliGen.SetCustomCodeRegions(p.Config.CustomCodeRegions)
 	cliGen.SetGenerateTUI(p.Config.GenerateTUI)
 	cliGen.SetPackagePath(p.Config.PackageName)
+	if len(p.Config.SpinnerFrames) > 0 || p.Config.SpinnerMs > 0 || !p.Config.SpinnerEnabled {
+		cliGen.SetSpinnerConfig(cli.SpinnerConfig{
+			Enabled:    p.Config.SpinnerEnabled,
+			Frames:     p.Config.SpinnerFrames,
+			IntervalMs: p.Config.SpinnerMs,
+		})
+	}
 	if err := cliGen.Generate(p.Registry); err != nil {
 		return fmt.Errorf("generate CLI commands: %w", err)
 	}

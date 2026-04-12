@@ -129,6 +129,24 @@ the transport chain. Each command only needs to construct the URL, parameters,
 and body, then call `GetAPIClient().Do(req)`. The transport chain handles
 everything else.
 
+## Loading spinner
+
+Each generated command wraps the HTTP call in a `withSpinner` function. While
+the request is in flight, a small animation cycles on stderr to indicate
+loading. The spinner is generated from the `features.spinner` section in
+`cliford.yaml`:
+
+- `enabled`: Controls whether the spinner code is included in the generated
+  app. When `false`, `withSpinner` becomes a no-op pass-through.
+- `frames`: An array of strings that cycle as the animation. The default is
+  braille dots (`⠋ ⠙ ⠹ ...`), but any Unicode or ASCII characters work.
+- `intervalMs`: Time between frame changes in milliseconds. Lower values
+  produce faster animation.
+
+The spinner writes to stderr and clears itself when the response arrives, so
+it never appears in piped or redirected stdout. It is also suppressed in
+`--no-interactive` and `--agent` modes.
+
 ## Table output
 
 For GET operations that return arrays, the generated app defaults to table

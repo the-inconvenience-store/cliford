@@ -98,6 +98,47 @@ All commands include retry flags:
 | `--retry-max-attempts` | Override max retry attempts |
 | `--retry-max-elapsed` | Override max elapsed time (e.g., `5m`) |
 
+## Loading spinner
+
+When a command makes an HTTP request, a loading spinner animates on stderr
+while the response is in flight. The spinner only appears when stderr is a
+terminal. It is suppressed in `--no-interactive`, `--agent`, and piped
+contexts.
+
+The spinner frames, speed, and whether it appears at all are configured in
+`cliford.yaml` at generation time:
+
+```yaml
+features:
+  spinner:
+    enabled: true
+    frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    intervalMs: 80
+```
+
+Setting `enabled: false` removes the spinner entirely from the generated
+code. The frames array accepts any Unicode or ASCII characters. The
+`intervalMs` value controls how fast the animation cycles.
+
+Some alternative frame sets:
+
+```yaml
+# Simple dots
+frames: [".", "..", "...", ""]
+
+# Arrow
+frames: ["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"]
+
+# Block fill
+frames: ["▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"]
+
+# Classic ASCII
+frames: ["|", "/", "-", "\\"]
+
+# Claude Code 
+frames: ["·", "✻", "✽", "✶", "✳", "✢"]
+```
+
 ## Generated file structure
 
 ```

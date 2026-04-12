@@ -82,9 +82,17 @@ type AuthConfig struct {
 type FeaturesConfig struct {
 	Pagination        bool          `mapstructure:"pagination"`
 	Retries           RetryDefaults `mapstructure:"retries"`
+	Spinner           SpinnerConfig `mapstructure:"spinner"`
 	CustomCodeRegions bool          `mapstructure:"customCodeRegions"`
 	Documentation     DocsConfig    `mapstructure:"documentation"`
 	Distribution      DistConfig    `mapstructure:"distribution"`
+}
+
+// SpinnerConfig controls the loading animation displayed during HTTP requests.
+type SpinnerConfig struct {
+	Enabled    bool     `mapstructure:"enabled"`
+	Frames     []string `mapstructure:"frames"`
+	IntervalMs int      `mapstructure:"intervalMs"`
 }
 
 // RetryDefaults holds global retry defaults.
@@ -197,6 +205,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("features.pagination", true)
 	v.SetDefault("features.retries.enabled", true)
 	v.SetDefault("features.retries.maxAttempts", 3)
+	v.SetDefault("features.spinner.enabled", true)
+	v.SetDefault("features.spinner.frames", []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"})
+	v.SetDefault("features.spinner.intervalMs", 80)
 	v.SetDefault("features.customCodeRegions", false)
 	v.SetDefault("features.documentation.markdown", true)
 	v.SetDefault("features.documentation.llmsTxt", true)
@@ -239,6 +250,11 @@ func DefaultConfig() ClifordConfig {
 			Retries: RetryDefaults{
 				Enabled:     true,
 				MaxAttempts: 3,
+			},
+			Spinner: SpinnerConfig{
+				Enabled:    true,
+				Frames:     []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
+				IntervalMs: 80,
 			},
 			Documentation: DocsConfig{
 				Markdown: true,

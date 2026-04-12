@@ -136,6 +136,11 @@ func generateCmd() *cobra.Command {
 			// Apply per-operation overrides from config
 			if fileCfg != nil {
 				cfg.AppVersion = fileCfg.App.Version
+				cfg.SpinnerEnabled = fileCfg.Features.Spinner.Enabled
+				cfg.SpinnerFrames = fileCfg.Features.Spinner.Frames
+				cfg.SpinnerMs = fileCfg.Features.Spinner.IntervalMs
+			} else {
+				cfg.SpinnerEnabled = true
 			}
 
 			p := pipeline.New(cfg)

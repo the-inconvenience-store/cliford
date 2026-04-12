@@ -72,6 +72,20 @@ features:
   retries:
     enabled: true
     maxAttempts: 3
+  spinner:
+    enabled: true                       # Show loading animation during HTTP requests
+    frames:                             # Animation frames (any Unicode/ASCII characters)
+      - "⠋"
+      - "⠙"
+      - "⠹"
+      - "⠸"
+      - "⠼"
+      - "⠴"
+      - "⠦"
+      - "⠧"
+      - "⠇"
+      - "⠏"
+    intervalMs: 80                      # Milliseconds between frames
   customCodeRegions: false
   documentation:
     markdown: true
