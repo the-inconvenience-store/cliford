@@ -62,7 +62,10 @@
       "WebFetch(domain:en.wikipedia.org)",
       "WebFetch(domain:docs.divio.com)",
       "Bash(find .:*)",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(grep -E \"\\\\.\\(go|yaml|md\\)$\")",
+      "Bash(grep:*)",
+      "Bash(find:*)"
     ]
   }
 }

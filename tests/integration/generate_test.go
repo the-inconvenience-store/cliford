@@ -143,6 +143,95 @@ func TestGeneratePetstore(t *testing.T) {
 	}
 }
 
+func TestGenerateServerVariables(t *testing.T) {
+	specPath, err := filepath.Abs("../../testdata/specs/server-vars.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	outputDir := t.TempDir()
+
+	cfg := pipeline.Config{
+		SpecPath:      specPath,
+		OutputDir:     outputDir,
+		RemoveStutter: true,
+		AppName:       "svtest",
+		PackageName:   "github.com/test/svtest",
+		EnvVarPrefix:  "SV",
+	}
+
+	p := pipeline.New(cfg)
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatalf("pipeline failed: %v", err)
+	}
+
+	// Read generated root.go and verify server variable declarations
+	rootGo, err := os.ReadFile(filepath.Join(outputDir, "internal/cli/root.go"))
+	if err != nil {
+		t.Fatalf("read root.go: %v", err)
+	}
+	rootStr := string(rootGo)
+
+	for _, want := range []string{
+		"serverVarTenant",
+		"serverVarVersion",
+		`"server-tenant"`,
+		`"server-version"`,
+	} {
+		if !strings.Contains(rootStr, want) {
+			t.Errorf("root.go missing %q", want)
+		}
+	}
+
+	// Read generated items.go and verify substitution + enum validation
+	itemsGo, err := os.ReadFile(filepath.Join(outputDir, "internal/cli/items.go"))
+	if err != nil {
+		t.Fatalf("read items.go: %v", err)
+	}
+	itemsStr := string(itemsGo)
+
+	for _, want := range []string{
+		"strings.NewReplacer",
+		`"{tenant}", serverVarTenant`,
+		`"{version}", serverVarVersion`,
+		"slices.Contains",
+		"--server-tenant",
+	} {
+		if !strings.Contains(itemsStr, want) {
+			t.Errorf("items.go missing %q", want)
+		}
+	}
+
+	// Compile the generated app
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = outputDir
+	if out, err := tidy.CombinedOutput(); err != nil {
+		t.Fatalf("go mod tidy failed: %v\n%s", err, out)
+	}
+
+	build := exec.Command("go", "build", "./...")
+	build.Dir = outputDir
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build failed: %v\n%s", err, out)
+	}
+
+	// Build binary and verify --server-tenant / --server-version appear in help
+	binary := filepath.Join(outputDir, "svtest-bin")
+	buildBin := exec.Command("go", "build", "-o", binary, "./cmd/svtest/")
+	buildBin.Dir = outputDir
+	if out, err := buildBin.CombinedOutput(); err != nil {
+		t.Fatalf("build binary failed: %v\n%s", err, out)
+	}
+
+	helpOut, _ := exec.Command(binary, "--help").CombinedOutput()
+	helpStr := string(helpOut)
+	for _, flag := range []string{"--server-tenant", "--server-version"} {
+		if !strings.Contains(helpStr, flag) {
+			t.Errorf("--help missing flag %q", flag)
+		}
+	}
+}
+
 func TestGenerateMultiAuth(t *testing.T) {
 	specPath, err := filepath.Abs("../../testdata/specs/complex-auth.yaml")
 	if err != nil {

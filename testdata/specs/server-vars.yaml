@@ -1,0 +1,42 @@
+openapi: "3.0.3"
+info:
+  title: Server Variables Test API
+  description: Minimal API for testing server URL template variable substitution
+  version: "1.0.0"
+
+servers:
+  - url: "https://{tenant}.api.example.com/{version}"
+    description: Production
+    variables:
+      tenant:
+        default: "acme"
+        description: "Customer tenant identifier"
+        enum:
+          - "acme"
+          - "globex"
+          - "initech"
+      version:
+        default: "v1"
+        description: "API version"
+
+paths:
+  /items:
+    get:
+      operationId: listItems
+      summary: List items
+      tags:
+        - items
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string

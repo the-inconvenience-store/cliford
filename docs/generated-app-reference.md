@@ -31,7 +31,8 @@ These flags are available on every command:
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--output-format` | `-o` | `pretty` | Output format: `pretty`, `json`, `yaml`, `table` |
-| `--server` | | (from spec) | Override API server URL |
+| `--server` | | (from spec) | Override entire API server URL |
+| `--server-<varname>` | | (from spec) | Set a server URL template variable (see below) |
 | `--timeout` | | `30s` | Request timeout |
 | `--verbose` | `-v` | `false` | Log request/response to stderr (secrets redacted) |
 | `--dry-run` | | `false` | Display HTTP request without executing |
@@ -39,6 +40,61 @@ These flags are available on every command:
 | `--agent` | | `false` | Force agent mode (structured JSON, no interactive prompts) |
 | `--no-interactive` | | `false` | Disable interactive prompts |
 | `--tui` | | `false` | Launch full TUI mode |
+
+### Server URL template variables
+
+When the OpenAPI spec uses a URL template (e.g.,
+`https://{tenant}.api.example.com/{version}`), Cliford generates one
+persistent flag per variable:
+
+```
+--server-<varname>   (default: value from servers[0].variables.<varname>.default)
+```
+
+For example, a spec with:
+
+```yaml
+servers:
+  - url: "https://{tenant}.api.example.com/{version}"
+    variables:
+      tenant:
+        default: "acme"
+        enum: ["acme", "globex", "initech"]
+      version:
+        default: "v1"
+```
+
+Produces these flags on every command:
+
+```
+--server-tenant string   Customer tenant identifier (default "acme")
+--server-version string  API version (default "v1")
+```
+
+The flags substitute their values into the URL template at request time:
+
+```bash
+# Uses default values: https://acme.api.example.com/v1/items
+./myapp items list
+
+# Override tenant and version:
+./myapp items list --server-tenant globex --server-version v2
+# → https://globex.api.example.com/v2/items
+```
+
+When `--server` is provided, it overrides the entire URL and variable
+substitution is skipped:
+
+```bash
+./myapp items list --server https://dev.example.com
+```
+
+If a variable defines `enum` values, passing an invalid value returns an
+error before the request is made:
+
+```
+invalid --server-tenant value "unknown": allowed values are [acme globex initech]
+```
 
 ## Per-operation flags
 
