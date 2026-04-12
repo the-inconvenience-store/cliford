@@ -80,12 +80,13 @@ type AuthConfig struct {
 
 // FeaturesConfig controls optional feature generation.
 type FeaturesConfig struct {
-	Pagination        bool          `mapstructure:"pagination"`
-	Retries           RetryDefaults `mapstructure:"retries"`
-	Spinner           SpinnerConfig `mapstructure:"spinner"`
-	CustomCodeRegions bool          `mapstructure:"customCodeRegions"`
-	Documentation     DocsConfig    `mapstructure:"documentation"`
-	Distribution      DistConfig    `mapstructure:"distribution"`
+	Pagination        bool               `mapstructure:"pagination"`
+	Retries           RetryDefaults      `mapstructure:"retries"`
+	Spinner           SpinnerConfig      `mapstructure:"spinner"`
+	CustomCodeRegions bool               `mapstructure:"customCodeRegions"`
+	Documentation     DocsConfig         `mapstructure:"documentation"`
+	Distribution      DistConfig         `mapstructure:"distribution"`
+	Hooks             RuntimeHooksConfig `mapstructure:"hooks"`
 }
 
 // SpinnerConfig controls the loading animation displayed during HTTP requests.
@@ -138,9 +139,22 @@ type OperationTUIOverride struct {
 	Refreshable bool   `mapstructure:"refreshable"`
 }
 
-// HookDef describes a hook command.
+// HookDef describes a pipeline hook command (used in cliford.yaml hooks section).
 type HookDef struct {
 	Run string `mapstructure:"run"`
+}
+
+// RuntimeHooksConfig holds before/after request hooks baked into the generated app.
+type RuntimeHooksConfig struct {
+	BeforeRequest []RuntimeHookDef `mapstructure:"beforeRequest"`
+	AfterResponse []RuntimeHookDef `mapstructure:"afterResponse"`
+}
+
+// RuntimeHookDef describes a single runtime hook embedded at generation time.
+type RuntimeHookDef struct {
+	Type       string `mapstructure:"type"`       // "shell" or "go-plugin"
+	Command    string `mapstructure:"command"`    // shell hook command
+	PluginPath string `mapstructure:"pluginPath"` // go-plugin binary path
 }
 
 // GlobalParamDef describes a global parameter added to all requests.

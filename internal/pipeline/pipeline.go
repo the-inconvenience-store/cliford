@@ -65,6 +65,17 @@ type Config struct {
 	SpinnerEnabled bool
 	SpinnerFrames  []string
 	SpinnerMs      int
+
+	// Runtime hooks baked into the generated app at generation time.
+	BeforeRequestHooks []RuntimeHookDef
+	AfterResponseHooks []RuntimeHookDef
+}
+
+// RuntimeHookDef describes a hook baked into the generated app at generation time.
+type RuntimeHookDef struct {
+	Type       string // "shell" or "go-plugin"
+	Command    string // shell hook command
+	PluginPath string // go-plugin binary path
 }
 
 // Pipeline orchestrates the full code generation process.
@@ -388,6 +399,15 @@ func generateInfra(p *Pipeline) error {
 		}
 	}
 
+	hooksBlock := buildHooksBlock(p.Config.BeforeRequestHooks, p.Config.AfterResponseHooks)
+
+	// Only import the hooks package when hooks are actually baked in.
+	// An unconditional import with no references is a compile error in Go.
+	hooksImport := ""
+	if len(p.Config.BeforeRequestHooks) > 0 || len(p.Config.AfterResponseHooks) > 0 {
+		hooksImport = fmt.Sprintf("\n\t\"%s/internal/hooks\"", p.Config.PackageName)
+	}
+
 	// Generate main.go with layered HTTP client setup
 	mainGo := fmt.Sprintf(`package main
 
@@ -397,7 +417,7 @@ import (
 
 	"%s/internal/auth"
 	"%s/internal/cli"
-	"%s/internal/client"
+	"%s/internal/client"%s
 	"%s/internal/sdk"
 
 	"github.com/spf13/viper"
@@ -441,7 +461,7 @@ func main() {
 	// Load global params from config (global_params.headers / global_params.query)
 	opts.GlobalHeaders = viper.GetStringMapString("global_params.headers")
 	opts.GlobalQueryParams = viper.GetStringMapString("global_params.query")
-%s
+%s%s
 	cli.SetAPIClient(client.NewHTTPClient(opts))
 
 	// Apply server_url from config/env if --server flag not used
@@ -454,7 +474,7 @@ func main() {
 		os.Exit(1)
 	}
 }
-`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.AppName, p.Config.AppName, oauthBlock, p.Config.AppName)
+`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, hooksImport, p.Config.PackageName, p.Config.AppName, p.Config.AppName, oauthBlock, hooksBlock, p.Config.AppName)
 
 	cmdDir := filepath.Join(p.Config.OutputDir, "cmd", p.Config.AppName)
 	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
@@ -483,6 +503,7 @@ func main() {
 go 1.22
 
 require (
+	github.com/hashicorp/go-plugin v1.6.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/zalando/go-keyring v0.2.8
@@ -537,4 +558,43 @@ func joinLines(lines []string) string {
 		result += "  - " + l + "\n"
 	}
 	return result
+}
+
+// buildHooksBlock generates the Go source block that bakes runtime hooks into
+// the generated main.go. Returns an empty string when no hooks are configured.
+func buildHooksBlock(before, after []RuntimeHookDef) string {
+	if len(before) == 0 && len(after) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\t// Runtime hooks — baked in at generation time.\n")
+	sb.WriteString("\topts.HooksEnabled = true\n")
+	if len(before) > 0 {
+		sb.WriteString("\topts.BeforeRequestHooks = []hooks.HookDef{\n")
+		for _, h := range before {
+			writeHookLiteral(&sb, h)
+		}
+		sb.WriteString("\t}\n")
+	}
+	if len(after) > 0 {
+		sb.WriteString("\topts.AfterResponseHooks = []hooks.HookDef{\n")
+		for _, h := range after {
+			writeHookLiteral(&sb, h)
+		}
+		sb.WriteString("\t}\n")
+	}
+	return sb.String()
+}
+
+func writeHookLiteral(sb *strings.Builder, h RuntimeHookDef) {
+	hookType := h.Type
+	if hookType == "" {
+		hookType = "shell"
+	}
+	switch hookType {
+	case "shell":
+		fmt.Fprintf(sb, "\t\t{Type: %q, Command: %q},\n", hookType, h.Command)
+	case "go-plugin":
+		fmt.Fprintf(sb, "\t\t{Type: %q, PluginPath: %q},\n", hookType, h.PluginPath)
+	}
 }

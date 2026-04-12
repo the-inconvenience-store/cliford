@@ -106,28 +106,30 @@ the generated code.
 | Type | Mechanism | Use case |
 |------|-----------|----------|
 | `shell` | Exec subprocess, JSON on stdin | Logging, auditing, simple header injection |
-| `go-plugin` | hashicorp/go-plugin via gRPC | Advanced processing in any language |
+| `go-plugin` | hashicorp/go-plugin via net/rpc | Header injection from external logic, credential enrichment |
 
 ### How to configure runtime hooks
 
-Add hooks to the generated app's config file:
+They are configured in `cliford.yaml` and baked into the generated app at generation
+time. Every user who runs the generated binary gets the same hooks.
 
 ```yaml
-# ~/.config/myapp/config.yaml
+# cliford.yaml
 features:
   hooks:
-    enabled: true
-
-hooks:
-  before_request:
-    - type: shell
-      command: "scripts/audit-log.sh"
-    - type: shell
-      command: "scripts/inject-trace-header.sh"
-  after_response:
-    - type: shell
-      command: "scripts/log-response.sh"
+    beforeRequest:
+      - type: shell
+        command: "scripts/audit-log.sh"
+      - type: shell
+        command: "scripts/inject-trace-header.sh"
+      - type: go-plugin
+        pluginPath: "./bin/trace-plugin"
+    afterResponse:
+      - type: shell
+        command: "scripts/log-response.sh"
 ```
+
+Run `cliford generate` to regenerate after changing hooks.
 
 ### Shell hook protocol
 
@@ -175,6 +177,95 @@ Shell hooks receive a JSON object on stdin with this structure:
 Headers containing `authorization`, `secret`, `token`, `key`, or `password`
 (case-insensitive) are replaced with `[REDACTED]` in the hook context JSON.
 This prevents credential leakage to hook scripts.
+
+### go-plugin hooks
+
+go-plugin hooks run as separate subprocess binaries managed by the generated
+app via [hashicorp/go-plugin](https://github.com/hashicorp/go-plugin) with
+net/rpc transport. Unlike shell hooks, they can modify outgoing request headers
+and receive typed `HookResponse` values.
+
+#### The HookService interface
+
+Your plugin binary must implement this interface:
+
+```go
+type HookService interface {
+    BeforeRequest(ctx HookContext) (*HookResponse, error)
+    AfterResponse(ctx HookContext) (*HookResponse, error)
+}
+```
+
+`HookContext` carries the same fields as the shell hook JSON (operation ID,
+method, URL, headers, timestamp, status code, etc.).
+
+`HookResponse` has three fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Abort` | `bool` | If true, the request is cancelled and the error is shown to the user |
+| `AbortReason` | `string` | Message displayed when `Abort` is true |
+| `ModifiedHeaders` | `map[string]string` | Headers to set on the outgoing request (before_request only) |
+
+#### Minimal plugin skeleton
+
+```go
+package main
+
+import (
+    "github.com/hashicorp/go-plugin"
+    hooks "myapp/internal/hooks"
+)
+
+// Handshake constants — must match the generated app exactly.
+var handshakeConfig = plugin.HandshakeConfig{
+    ProtocolVersion:  1,
+    MagicCookieKey:   "CLIFORD_HOOK_PLUGIN",
+    MagicCookieValue: "hook_v1",
+}
+
+type MyHookPlugin struct{}
+
+func (p *MyHookPlugin) BeforeRequest(ctx hooks.HookContext) (*hooks.HookResponse, error) {
+    return &hooks.HookResponse{
+        ModifiedHeaders: map[string]string{
+            "X-Request-ID": generateID(),
+        },
+    }, nil
+}
+
+func (p *MyHookPlugin) AfterResponse(ctx hooks.HookContext) (*hooks.HookResponse, error) {
+    return nil, nil // no-op
+}
+
+func main() {
+    plugin.Serve(&plugin.ServeConfig{
+        HandshakeConfig: handshakeConfig,
+        Plugins: plugin.PluginSet{
+            "hook": &hooks.HookPlugin{Impl: &MyHookPlugin{}},
+        },
+    })
+}
+```
+
+Build and wire the plugin:
+
+```bash
+go build -o ./plugins/my-hook ./cmd/my-hook
+
+# ~/.config/myapp/config.yaml
+features:
+  hooks:
+    enabled: true
+hooks:
+  before_request:
+    - type: go-plugin
+      plugin_path: "./plugins/my-hook"
+```
+
+The generated app spawns the plugin binary once and reuses the subprocess for
+all requests. The `CLIFORD_HOOK_PLUGIN=hook_v1` magic cookie prevents random
+binaries from being accidentally loaded as plugins.
 
 ## Pipeline hooks vs runtime hooks
 

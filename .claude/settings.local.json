@@ -61,7 +61,8 @@
       "WebFetch(domain:diataxis.fr)",
       "WebFetch(domain:en.wikipedia.org)",
       "WebFetch(domain:docs.divio.com)",
-      "Bash(find .:*)"
+      "Bash(find .:*)",
+      "Bash(xargs ls:*)"
     ]
   }
 }

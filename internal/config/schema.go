@@ -88,6 +88,27 @@ func GenerateJSONSchema() ([]byte, error) {
 					"spinner": map[string]any{"type": "string"},
 				},
 			},
+			"features": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"hooks": map[string]any{
+						"type":        "object",
+						"description": "Runtime hooks baked into the generated app at generation time",
+						"properties": map[string]any{
+							"beforeRequest": map[string]any{
+								"type":        "array",
+								"description": "Hooks executed before every HTTP request",
+								"items":       runtimeHookSchema(),
+							},
+							"afterResponse": map[string]any{
+								"type":        "array",
+								"description": "Hooks executed after every HTTP response",
+								"items":       runtimeHookSchema(),
+							},
+						},
+					},
+				},
+			},
 			"operations": map[string]any{
 				"type": "object",
 				"additionalProperties": map[string]any{
@@ -121,4 +142,26 @@ func GenerateJSONSchema() ([]byte, error) {
 		return nil, fmt.Errorf("marshal JSON Schema: %w", err)
 	}
 	return data, nil
+}
+
+func runtimeHookSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"required": []string{"type"},
+		"properties": map[string]any{
+			"type": map[string]any{
+				"type":        "string",
+				"enum":        []string{"shell", "go-plugin"},
+				"description": "Hook execution mechanism",
+			},
+			"command": map[string]any{
+				"type":        "string",
+				"description": "Shell command to execute (type: shell)",
+			},
+			"pluginPath": map[string]any{
+				"type":        "string",
+				"description": "Path to go-plugin binary (type: go-plugin)",
+			},
+		},
+	}
 }

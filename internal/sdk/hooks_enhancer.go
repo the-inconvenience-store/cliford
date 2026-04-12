@@ -31,12 +31,17 @@ package hooks
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/rpc"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/hashicorp/go-plugin"
 )
 
 // HookType identifies the hook execution mechanism.
@@ -69,10 +74,28 @@ type HookContext struct {
 	Error           string            ` + "`" + `json:"error,omitempty"` + "`" + `
 }
 
+// HookResponse is returned by executeHook. It carries optional header
+// modifications (for before_request) and an optional abort signal.
+type HookResponse struct {
+	Abort           bool
+	AbortReason     string
+	ModifiedHeaders map[string]string
+}
+
+// GetModifiedHeaders returns ModifiedHeaders safely on a nil receiver.
+func (r *HookResponse) GetModifiedHeaders() map[string]string {
+	if r == nil {
+		return nil
+	}
+	return r.ModifiedHeaders
+}
+
 // Runner executes before_request and after_response hooks.
 type Runner struct {
 	BeforeRequest []HookDef
 	AfterResponse []HookDef
+	pluginClients map[string]*plugin.Client
+	mu            sync.Mutex
 }
 
 // NewRunner creates a hook runner from configuration.
@@ -84,7 +107,8 @@ func NewRunner(before, after []HookDef) *Runner {
 }
 
 // RunBefore executes all before_request hooks. Returns an error if any hook
-// aborts (non-zero exit code for shell hooks).
+// aborts (non-zero exit code for shell hooks). Plugin hooks may also set
+// ModifiedHeaders which are applied to the outgoing request.
 func (r *Runner) RunBefore(req *http.Request) error {
 	if len(r.BeforeRequest) == 0 {
 		return nil
@@ -92,14 +116,18 @@ func (r *Runner) RunBefore(req *http.Request) error {
 
 	ctx := buildRequestContext(req)
 	for _, hook := range r.BeforeRequest {
-		if err := executeHook(hook, ctx); err != nil {
+		resp, err := r.executeHook(hook, ctx, true)
+		if err != nil {
 			return fmt.Errorf("before_request hook aborted: %w", err)
+		}
+		for k, v := range resp.GetModifiedHeaders() {
+			req.Header.Set(k, v)
 		}
 	}
 	return nil
 }
 
-// RunAfter executes all after_response hooks.
+// RunAfter executes all after_response hooks. Errors are non-fatal.
 func (r *Runner) RunAfter(req *http.Request, resp *http.Response, elapsed time.Duration, respErr error) {
 	if len(r.AfterResponse) == 0 {
 		return
@@ -116,7 +144,7 @@ func (r *Runner) RunAfter(req *http.Request, resp *http.Response, elapsed time.D
 	}
 
 	for _, hook := range r.AfterResponse {
-		_ = executeHook(hook, ctx) // after_response errors are logged, not fatal
+		_, _ = r.executeHook(hook, ctx, false) // after_response errors are non-fatal
 	}
 }
 
@@ -143,16 +171,14 @@ func flattenHeaders(h http.Header) map[string]string {
 	return result
 }
 
-func executeHook(hook HookDef, ctx HookContext) error {
+func (r *Runner) executeHook(hook HookDef, ctx HookContext, isBefore bool) (*HookResponse, error) {
 	switch hook.Type {
 	case HookTypeShell, "":
-		return executeShellHook(hook.Command, ctx)
+		return nil, executeShellHook(hook.Command, ctx)
 	case HookTypePlugin:
-		// go-plugin hooks: not yet implemented (requires hashicorp/go-plugin gRPC setup)
-		fmt.Fprintf(os.Stderr, "Warning: go-plugin hooks not yet fully implemented, skipping %s\n", hook.PluginPath)
-		return nil
+		return r.executePluginHook(hook.PluginPath, ctx, isBefore)
 	default:
-		return fmt.Errorf("unknown hook type: %s", hook.Type)
+		return nil, fmt.Errorf("unknown hook type: %s", hook.Type)
 	}
 }
 
@@ -177,6 +203,128 @@ func executeShellHook(command string, ctx HookContext) error {
 		return fmt.Errorf("%s: %w", command, err)
 	}
 	return nil
+}
+
+// --- go-plugin integration ---
+
+// handshakeConfig is the magic cookie that prevents arbitrary binaries from
+// being loaded as plugins.
+var handshakeConfig = plugin.HandshakeConfig{
+	ProtocolVersion:  1,
+	MagicCookieKey:   "CLIFORD_HOOK_PLUGIN",
+	MagicCookieValue: "hook_v1",
+}
+
+// pluginMap maps the plugin name to its net/rpc implementation.
+var pluginMap = plugin.PluginSet{
+	"hook": &HookPlugin{},
+}
+
+// HookService is the interface that go-plugin hook binaries must implement.
+type HookService interface {
+	BeforeRequest(ctx HookContext) (*HookResponse, error)
+	AfterResponse(ctx HookContext) (*HookResponse, error)
+}
+
+// --- net/rpc scaffolding ---
+
+type hookRPCArgs struct{ Ctx HookContext }
+type hookRPCReply struct {
+	Resp *HookResponse
+	Err  string
+}
+
+// hookRPCClient is the client side of the net/rpc bridge (used inside the generated app).
+type hookRPCClient struct{ client *rpc.Client }
+
+func (c *hookRPCClient) BeforeRequest(ctx HookContext) (*HookResponse, error) {
+	var reply hookRPCReply
+	if err := c.client.Call("Plugin.BeforeRequest", hookRPCArgs{Ctx: ctx}, &reply); err != nil {
+		return nil, err
+	}
+	if reply.Err != "" {
+		return nil, errors.New(reply.Err)
+	}
+	return reply.Resp, nil
+}
+
+func (c *hookRPCClient) AfterResponse(ctx HookContext) (*HookResponse, error) {
+	var reply hookRPCReply
+	if err := c.client.Call("Plugin.AfterResponse", hookRPCArgs{Ctx: ctx}, &reply); err != nil {
+		return nil, err
+	}
+	if reply.Err != "" {
+		return nil, errors.New(reply.Err)
+	}
+	return reply.Resp, nil
+}
+
+// hookRPCServer is the server side of the net/rpc bridge (implemented by plugin binary).
+type hookRPCServer struct{ Impl HookService }
+
+func (s *hookRPCServer) BeforeRequest(args hookRPCArgs, reply *hookRPCReply) error {
+	resp, err := s.Impl.BeforeRequest(args.Ctx)
+	if err != nil {
+		reply.Err = err.Error()
+		return nil
+	}
+	reply.Resp = resp
+	return nil
+}
+
+func (s *hookRPCServer) AfterResponse(args hookRPCArgs, reply *hookRPCReply) error {
+	resp, err := s.Impl.AfterResponse(args.Ctx)
+	if err != nil {
+		reply.Err = err.Error()
+		return nil
+	}
+	reply.Resp = resp
+	return nil
+}
+
+// HookPlugin is the hashicorp/go-plugin wrapper for HookService.
+// Plugin authors embed this in their plugin binary's main.go.
+type HookPlugin struct{ Impl HookService }
+
+func (p *HookPlugin) Server(*plugin.MuxBroker) (interface{}, error) {
+	return &hookRPCServer{Impl: p.Impl}, nil
+}
+
+func (p *HookPlugin) Client(_ *plugin.MuxBroker, c *rpc.Client) (interface{}, error) {
+	return &hookRPCClient{client: c}, nil
+}
+
+// executePluginHook launches (or reuses a cached) plugin subprocess and calls
+// BeforeRequest or AfterResponse depending on isBefore.
+func (r *Runner) executePluginHook(pluginPath string, ctx HookContext, isBefore bool) (*HookResponse, error) {
+	r.mu.Lock()
+	if r.pluginClients == nil {
+		r.pluginClients = make(map[string]*plugin.Client)
+	}
+	c, ok := r.pluginClients[pluginPath]
+	if !ok {
+		c = plugin.NewClient(&plugin.ClientConfig{
+			HandshakeConfig: handshakeConfig,
+			Plugins:         pluginMap,
+			Cmd:             exec.Command(pluginPath),
+		})
+		r.pluginClients[pluginPath] = c
+	}
+	r.mu.Unlock()
+
+	rpcClient, err := c.Client()
+	if err != nil {
+		return nil, fmt.Errorf("connect to plugin %q: %w", pluginPath, err)
+	}
+	raw, err := rpcClient.Dispense("hook")
+	if err != nil {
+		return nil, fmt.Errorf("dispense plugin %q: %w", pluginPath, err)
+	}
+	svc := raw.(HookService)
+	if isBefore {
+		return svc.BeforeRequest(ctx)
+	}
+	return svc.AfterResponse(ctx)
 }
 `
 

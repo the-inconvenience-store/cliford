@@ -139,6 +139,16 @@ func generateCmd() *cobra.Command {
 				cfg.SpinnerEnabled = fileCfg.Features.Spinner.Enabled
 				cfg.SpinnerFrames = fileCfg.Features.Spinner.Frames
 				cfg.SpinnerMs = fileCfg.Features.Spinner.IntervalMs
+				for _, h := range fileCfg.Features.Hooks.BeforeRequest {
+					cfg.BeforeRequestHooks = append(cfg.BeforeRequestHooks, pipeline.RuntimeHookDef{
+						Type: h.Type, Command: h.Command, PluginPath: h.PluginPath,
+					})
+				}
+				for _, h := range fileCfg.Features.Hooks.AfterResponse {
+					cfg.AfterResponseHooks = append(cfg.AfterResponseHooks, pipeline.RuntimeHookDef{
+						Type: h.Type, Command: h.Command, PluginPath: h.PluginPath,
+					})
+				}
 			} else {
 				cfg.SpinnerEnabled = true
 			}
