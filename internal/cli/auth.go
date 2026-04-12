@@ -10,11 +10,12 @@ import (
 
 // AuthGenerator produces auth CLI commands for the generated app.
 type AuthGenerator struct {
-	outputDir string
-	appName   string
-	pkgPath   string
-	envPrefix string
-	schemes   map[string]registry.SecurityScheme
+	outputDir      string
+	appName        string
+	pkgPath        string
+	envPrefix      string
+	schemes        map[string]registry.SecurityScheme
+	allowedMethods []string // when non-empty, only these methods are offered at login
 }
 
 // NewAuthGenerator creates an auth command generator.
@@ -24,6 +25,14 @@ func NewAuthGenerator(outputDir, appName string, schemes map[string]registry.Sec
 		appName:   appName,
 		schemes:   schemes,
 	}
+}
+
+// SetAllowedMethods restricts which auth methods are offered in the generated
+// login command. When empty (the default), all methods derived from the OpenAPI
+// security schemes are offered. Values must match method names returned by
+// availableMethods: "bearer", "apiKey", "basic", "oauth2".
+func (g *AuthGenerator) SetAllowedMethods(methods []string) {
+	g.allowedMethods = methods
 }
 
 // SetPackagePath sets the Go module path for import statements.
@@ -391,5 +400,23 @@ func (g *AuthGenerator) availableMethods() []string {
 	if len(methods) == 0 {
 		methods = []string{"bearer"}
 	}
+
+	// Apply allowedMethods restriction from cliford.yaml auth.methods
+	if len(g.allowedMethods) > 0 {
+		allowed := make(map[string]bool, len(g.allowedMethods))
+		for _, m := range g.allowedMethods {
+			allowed[m] = true
+		}
+		filtered := methods[:0]
+		for _, m := range methods {
+			if allowed[m] {
+				filtered = append(filtered, m)
+			}
+		}
+		if len(filtered) > 0 {
+			methods = filtered
+		}
+	}
+
 	return methods
 }

@@ -69,6 +69,14 @@ type Config struct {
 	// Runtime hooks baked into the generated app at generation time.
 	BeforeRequestHooks []RuntimeHookDef
 	AfterResponseHooks []RuntimeHookDef
+
+	// GlobalParamGenerators are global params baked in at generation time that
+	// produce a fresh value (uuid, timestamp) for every request.
+	GlobalParamGenerators []GlobalParamGeneratorDef
+
+	// AuthAllowedMethods restricts which auth methods are offered in the
+	// generated login command. Empty means all spec-derived methods are offered.
+	AuthAllowedMethods []string
 }
 
 // RuntimeHookDef describes a hook baked into the generated app at generation time.
@@ -76,6 +84,14 @@ type RuntimeHookDef struct {
 	Type       string // "shell" or "go-plugin"
 	Command    string // shell hook command
 	PluginPath string // go-plugin binary path
+}
+
+// GlobalParamGeneratorDef describes a global param whose value is generated
+// fresh for every request. Baked into the generated app at generation time.
+type GlobalParamGeneratorDef struct {
+	Name     string // Header/query param name, e.g. "X-Request-ID"
+	In       string // "header" or "query"
+	Strategy string // "uuid" or "timestamp"
 }
 
 // Pipeline orchestrates the full code generation process.
@@ -216,6 +232,9 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 	// Generate auth commands and infrastructure
 	authGen := cli.NewAuthGenerator(p.Config.OutputDir, p.Config.AppName, p.Registry.SecuritySchemes)
 	authGen.SetPackagePath(p.Config.PackageName + "/internal/auth")
+	if len(p.Config.AuthAllowedMethods) > 0 {
+		authGen.SetAllowedMethods(p.Config.AuthAllowedMethods)
+	}
 	authGen.SetEnvPrefix(p.Config.EnvVarPrefix)
 	if err := authGen.Generate(); err != nil {
 		return fmt.Errorf("generate auth commands: %w", err)
@@ -400,6 +419,7 @@ func generateInfra(p *Pipeline) error {
 	}
 
 	hooksBlock := buildHooksBlock(p.Config.BeforeRequestHooks, p.Config.AfterResponseHooks)
+	hooksBlock += buildGeneratorsBlock(p.Config.GlobalParamGenerators)
 
 	// Only import the hooks package when hooks are actually baked in.
 	// An unconditional import with no references is a compile error in Go.
@@ -583,6 +603,29 @@ func buildHooksBlock(before, after []RuntimeHookDef) string {
 		}
 		sb.WriteString("\t}\n")
 	}
+	return sb.String()
+}
+
+// buildGeneratorsBlock generates the Go source that wires baked-in global
+// param generators into the generated main.go. Returns "" when none configured.
+func buildGeneratorsBlock(gens []GlobalParamGeneratorDef) string {
+	if len(gens) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\t// Global param generators — baked in at generation time.\n")
+	sb.WriteString("\topts.GlobalParamGenerators = []client.ParamGenerator{\n")
+	for _, g := range gens {
+		switch g.Strategy {
+		case "uuid":
+			fmt.Fprintf(&sb, "\t\t{Name: %q, In: %q, Fn: client.GenerateUUID},\n", g.Name, g.In)
+		case "timestamp":
+			fmt.Fprintf(&sb, "\t\t{Name: %q, In: %q, Fn: client.GenerateTimestamp},\n", g.Name, g.In)
+		default:
+			fmt.Fprintf(&sb, "\t\t// skipped: unknown generate strategy %q for param %q\n", g.Strategy, g.Name)
+		}
+	}
+	sb.WriteString("\t}\n")
 	return sb.String()
 }
 

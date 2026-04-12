@@ -136,6 +136,7 @@ func generateCmd() *cobra.Command {
 			// Apply per-operation overrides from config
 			if fileCfg != nil {
 				cfg.AppVersion = fileCfg.App.Version
+				cfg.AuthAllowedMethods = fileCfg.Auth.Methods
 				cfg.SpinnerEnabled = fileCfg.Features.Spinner.Enabled
 				cfg.SpinnerFrames = fileCfg.Features.Spinner.Frames
 				cfg.SpinnerMs = fileCfg.Features.Spinner.IntervalMs
@@ -147,6 +148,20 @@ func generateCmd() *cobra.Command {
 				for _, h := range fileCfg.Features.Hooks.AfterResponse {
 					cfg.AfterResponseHooks = append(cfg.AfterResponseHooks, pipeline.RuntimeHookDef{
 						Type: h.Type, Command: h.Command, PluginPath: h.PluginPath,
+					})
+				}
+				for _, gp := range fileCfg.GlobalParams {
+					if gp.Generate == "" {
+						continue
+					}
+					if gp.Generate != "uuid" && gp.Generate != "timestamp" {
+						fmt.Fprintf(os.Stderr, "warning: unknown generate strategy %q for global param %q — skipping\n", gp.Generate, gp.Name)
+						continue
+					}
+					cfg.GlobalParamGenerators = append(cfg.GlobalParamGenerators, pipeline.GlobalParamGeneratorDef{
+						Name:     gp.Name,
+						In:       gp.In,
+						Strategy: gp.Generate,
 					})
 				}
 			} else {

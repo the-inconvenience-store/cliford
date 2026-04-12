@@ -63,6 +63,8 @@ func (g *ClientFactoryGenerator) Generate() error {
 package client
 
 import (
+	"crypto/rand"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -91,6 +93,10 @@ type Options struct {
 
 	// GlobalQueryParams are appended to every request URL (from config global_params.query).
 	GlobalQueryParams map[string]string
+
+	// GlobalParamGenerators produce a fresh value for a header or query param on
+	// every request. Configured via globalParams[].generate in cliford.yaml.
+	GlobalParamGenerators []ParamGenerator
 
 	// VerboseFlag is a pointer to the --verbose CLI flag.
 	// When non-nil and true, request/response details are logged to stderr.
@@ -146,12 +152,13 @@ func NewHTTPClient(opts Options) *http.Client {
 		}
 	}
 
-	// Layer 3: Global params injection (headers + query from config)
-	if len(opts.GlobalHeaders) > 0 || len(opts.GlobalQueryParams) > 0 {
+	// Layer 3: Global params injection (headers + query from config, plus generators)
+	if len(opts.GlobalHeaders) > 0 || len(opts.GlobalQueryParams) > 0 || len(opts.GlobalParamGenerators) > 0 {
 		transport = &globalParamsTransport{
-			base:    transport,
-			headers: opts.GlobalHeaders,
-			query:   opts.GlobalQueryParams,
+			base:       transport,
+			headers:    opts.GlobalHeaders,
+			query:      opts.GlobalQueryParams,
+			generators: opts.GlobalParamGenerators,
 		}
 	}
 
@@ -208,12 +215,34 @@ func (t *hooksTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
+// ParamGenerator generates a dynamic value for a global parameter per request.
+type ParamGenerator struct {
+	Name string
+	In   string // "header" or "query"
+	Fn   func() string
+}
+
+// GenerateUUID returns a new random UUID v4 using crypto/rand.
+func GenerateUUID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant bits
+	return fmt.Sprintf("%%x-%%x-%%x-%%x-%%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+// GenerateTimestamp returns the current UTC time formatted as RFC3339.
+func GenerateTimestamp() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}
+
 // globalParamsTransport injects configured global headers and query params into every request.
 // Per-operation values take precedence (existing headers/params are not overwritten).
 type globalParamsTransport struct {
-	base    http.RoundTripper
-	headers map[string]string
-	query   map[string]string
+	base       http.RoundTripper
+	headers    map[string]string
+	query      map[string]string
+	generators []ParamGenerator
 }
 
 func (t *globalParamsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -230,6 +259,22 @@ func (t *globalParamsTransport) RoundTrip(req *http.Request) (*http.Response, er
 			}
 		}
 		req.URL.RawQuery = q.Encode()
+	}
+	// Apply generated params (fresh value per request)
+	for _, g := range t.generators {
+		val := g.Fn()
+		switch g.In {
+		case "header":
+			if req.Header.Get(g.Name) == "" {
+				req.Header.Set(g.Name, val)
+			}
+		case "query":
+			q := req.URL.Query()
+			if q.Get(g.Name) == "" {
+				q.Set(g.Name, val)
+				req.URL.RawQuery = q.Encode()
+			}
+		}
 	}
 	return t.base.RoundTrip(req)
 }
