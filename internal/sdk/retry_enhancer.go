@@ -26,6 +26,7 @@ func (r *RetryEnhancer) Generate() error {
 package sdk
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -72,7 +73,20 @@ type RetryTransport struct {
 
 // RoundTrip implements http.RoundTripper with automatic retries.
 func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if !t.Config.Enabled {
+	cfg := t.Config
+	if override, ok := retryOverrideFromCtx(req.Context()); ok {
+		if override.Disabled {
+			return t.base().RoundTrip(req)
+		}
+		if override.MaxAttempts > 0 {
+			cfg.MaxAttempts = override.MaxAttempts
+		}
+		if override.MaxElapsedTime > 0 {
+			cfg.MaxElapsedTime = override.MaxElapsedTime
+		}
+	}
+
+	if !cfg.Enabled {
 		return t.base().RoundTrip(req)
 	}
 
@@ -83,10 +97,10 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Preserve idempotency key across retries
 	idempotencyKey := req.Header.Get("Idempotency-Key")
 
-	for attempt := 0; attempt < t.Config.MaxAttempts; attempt++ {
+	for attempt := 0; attempt < cfg.MaxAttempts; attempt++ {
 		if attempt > 0 {
 			// Check max elapsed time (0 = no limit)
-			if t.Config.MaxElapsedTime > 0 && time.Since(startTime) >= t.Config.MaxElapsedTime {
+			if cfg.MaxElapsedTime > 0 && time.Since(startTime) >= cfg.MaxElapsedTime {
 				break
 			}
 
@@ -207,6 +221,29 @@ func pluralize(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// RetryOverride carries per-request retry overrides passed via context.
+type RetryOverride struct {
+	Disabled       bool
+	MaxAttempts    int
+	MaxElapsedTime time.Duration
+}
+
+type retryOverrideKeyType struct{}
+
+var retryOverrideKey retryOverrideKeyType
+
+// WithRetryOverride attaches a per-request retry override to the context.
+// The RetryTransport reads this on every request and applies the overrides
+// before the retry loop runs.
+func WithRetryOverride(ctx context.Context, o RetryOverride) context.Context {
+	return context.WithValue(ctx, retryOverrideKey, o)
+}
+
+func retryOverrideFromCtx(ctx context.Context) (RetryOverride, bool) {
+	v, ok := ctx.Value(retryOverrideKey).(RetryOverride)
+	return v, ok
 }
 
 // Ensure unused import is valid

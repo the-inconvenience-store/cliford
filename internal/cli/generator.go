@@ -404,12 +404,14 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 	// Determine which imports are needed
 	needsBytes := false
 	needsContext := false
+	needsTime := g.pkgPath != "" // time.ParseDuration used in retry override block
 	for _, op := range ops {
 		if op.RequestBody != nil {
 			needsBytes = true
 		}
 		if op.Timeout != nil {
 			needsContext = true
+			needsTime = true
 		}
 	}
 
@@ -446,11 +448,14 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 		sb.Line(`	"slices"`)
 	}
 	sb.Line(`	"strings"`)
-	if needsContext {
+	if needsContext || needsTime {
 		sb.Line(`	"time"`)
 	}
 	sb.Line("")
 	sb.Line(`	"github.com/spf13/cobra"`)
+	if g.pkgPath != "" {
+		sb.Linef(`	"%s/internal/sdk"`, g.pkgPath)
+	}
 	sb.Line(")")
 	sb.Line("")
 
@@ -780,6 +785,26 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		sb.Line("			}")
 	}
 	sb.Line("")
+
+	// Apply per-request retry overrides from CLI flags
+	if g.pkgPath != "" {
+		sb.Line("			// Apply per-request retry overrides from CLI flags")
+		sb.Line("			if cmd.Flags().Changed(\"no-retries\") || cmd.Flags().Changed(\"retry-max-attempts\") || cmd.Flags().Changed(\"retry-max-elapsed\") {")
+		sb.Line("				override := sdk.RetryOverride{}")
+		sb.Line("				noRetries, _ := cmd.Flags().GetBool(\"no-retries\")")
+		sb.Line("				override.Disabled = noRetries")
+		sb.Line("				if maxAttempts, _ := cmd.Flags().GetInt(\"retry-max-attempts\"); maxAttempts > 0 {")
+		sb.Line("					override.MaxAttempts = maxAttempts")
+		sb.Line("				}")
+		sb.Line("				if maxElapsedStr, _ := cmd.Flags().GetString(\"retry-max-elapsed\"); maxElapsedStr != \"\" {")
+		sb.Line("					if d, err := time.ParseDuration(maxElapsedStr); err == nil {")
+		sb.Line("						override.MaxElapsedTime = d")
+		sb.Line("					}")
+		sb.Line("				}")
+		sb.Line("				req = req.WithContext(sdk.WithRetryOverride(req.Context(), override))")
+		sb.Line("			}")
+		sb.Line("")
+	}
 
 	// Custom code region: pre-request
 	if g.customCodeRegions {
