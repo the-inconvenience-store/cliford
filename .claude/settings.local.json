@@ -60,7 +60,8 @@
       "Bash(go list:*)",
       "WebFetch(domain:diataxis.fr)",
       "WebFetch(domain:en.wikipedia.org)",
-      "WebFetch(domain:docs.divio.com)"
+      "WebFetch(domain:docs.divio.com)",
+      "Bash(find .:*)"
     ]
   }
 }

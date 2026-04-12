@@ -39,9 +39,13 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -116,12 +120,42 @@ func AuthorizationCodeFlow(ctx context.Context, cfg OAuthConfig) (*OAuthToken, e
 
 	select {
 	case code := <-codeCh:
-		_ = code // Token exchange would happen here
-		return &OAuthToken{
-			AccessToken: "placeholder-implement-token-exchange",
-			TokenType:   "Bearer",
-			ExpiresAt:   time.Now().Add(1 * time.Hour),
-		}, nil
+		// Exchange authorization code for tokens
+		data := url.Values{
+			"grant_type":   {"authorization_code"},
+			"code":         {code},
+			"redirect_uri": {fmt.Sprintf("http://localhost:%d/callback", cfg.RedirectPort)},
+			"client_id":    {cfg.ClientID},
+		}
+		if cfg.ClientSecret != "" {
+			data.Set("client_secret", cfg.ClientSecret)
+		}
+
+		tokenReq, reqErr := http.NewRequestWithContext(ctx, "POST", cfg.TokenURL, strings.NewReader(data.Encode()))
+		if reqErr != nil {
+			return nil, fmt.Errorf("create token request: %w", reqErr)
+		}
+		tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		tokenResp, doErr := http.DefaultClient.Do(tokenReq)
+		if doErr != nil {
+			return nil, fmt.Errorf("token exchange failed: %w", doErr)
+		}
+		defer tokenResp.Body.Close()
+
+		body, _ := io.ReadAll(tokenResp.Body)
+		if tokenResp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("token exchange failed (HTTP %d): %s", tokenResp.StatusCode, string(body))
+		}
+
+		var token OAuthToken
+		if jsonErr := json.Unmarshal(body, &token); jsonErr != nil {
+			return nil, fmt.Errorf("parse token response: %w", jsonErr)
+		}
+		if token.ExpiresIn > 0 && token.ExpiresAt.IsZero() {
+			token.ExpiresAt = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
+		}
+		return &token, nil
 	case err := <-errCh:
 		return nil, err
 	case <-ctx.Done():
@@ -131,13 +165,51 @@ func AuthorizationCodeFlow(ctx context.Context, cfg OAuthConfig) (*OAuthToken, e
 
 // RefreshToken exchanges a refresh token for a new access token.
 func RefreshToken(ctx context.Context, cfg OAuthConfig, refreshToken string) (*OAuthToken, error) {
-	if cfg.RefreshURL == "" {
-		cfg.RefreshURL = cfg.TokenURL
+	if refreshToken == "" {
+		return nil, fmt.Errorf("no refresh token available; use auth login to re-authenticate")
+	}
+	tokenURL := cfg.RefreshURL
+	if tokenURL == "" {
+		tokenURL = cfg.TokenURL
+	}
+	if tokenURL == "" {
+		return nil, fmt.Errorf("no token URL configured for refresh")
 	}
 
-	// Placeholder — full implementation exchanges refresh token via HTTP POST
-	_ = refreshToken
-	return nil, fmt.Errorf("OAuth token refresh: not yet fully implemented (use auth login to re-authenticate)")
+	data := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+		"client_id":     {cfg.ClientID},
+	}
+	if cfg.ClientSecret != "" {
+		data.Set("client_secret", cfg.ClientSecret)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("create refresh request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("refresh token request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("token refresh failed (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	var token OAuthToken
+	if jsonErr := json.Unmarshal(body, &token); jsonErr != nil {
+		return nil, fmt.Errorf("parse refresh response: %w", jsonErr)
+	}
+	if token.ExpiresIn > 0 && token.ExpiresAt.IsZero() {
+		token.ExpiresAt = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
+	}
+	return &token, nil
 }
 
 // ClientCredentialsManager handles OAuth 2.0 Client Credentials flow

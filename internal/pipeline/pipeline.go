@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/the-inconvenience-store/cliford/internal/cli"
@@ -204,6 +205,7 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 	// Generate auth commands and infrastructure
 	authGen := cli.NewAuthGenerator(p.Config.OutputDir, p.Config.AppName, p.Registry.SecuritySchemes)
 	authGen.SetPackagePath(p.Config.PackageName + "/internal/auth")
+	authGen.SetEnvPrefix(p.Config.EnvVarPrefix)
 	if err := authGen.Generate(); err != nil {
 		return fmt.Errorf("generate auth commands: %w", err)
 	}
@@ -238,20 +240,32 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 		return fmt.Errorf("generate hooks runner: %w", err)
 	}
 
+	// Determine whether any OAuth 2.0 schemes are present (affects factory and middleware generation).
+	hasOAuth := false
+	for _, scheme := range p.Registry.SecuritySchemes {
+		if scheme.Flows != nil {
+			hasOAuth = true
+			break
+		}
+	}
+
 	// Generate HTTP client factory (layered transport: verbose → auth → retry → default)
 	factoryGen := sdk.NewClientFactoryGenerator(p.Config.OutputDir, p.Config.AppName, p.Config.EnvVarPrefix, p.Config.PackageName)
+	factoryGen.SetHasOAuth(hasOAuth)
 	if err := factoryGen.Generate(); err != nil {
 		return fmt.Errorf("generate client factory: %w", err)
 	}
 
 	// Generate OAuth support if any OAuth schemes exist
-	for _, scheme := range p.Registry.SecuritySchemes {
-		if scheme.Flows != nil {
-			oauthGen := sdk.NewOAuthEnhancer(p.Config.OutputDir, p.Config.AppName, scheme.Flows)
-			if err := oauthGen.Generate(); err != nil {
-				return fmt.Errorf("generate OAuth: %w", err)
+	if hasOAuth {
+		for _, scheme := range p.Registry.SecuritySchemes {
+			if scheme.Flows != nil {
+				oauthGen := sdk.NewOAuthEnhancer(p.Config.OutputDir, p.Config.AppName, scheme.Flows)
+				if err := oauthGen.Generate(); err != nil {
+					return fmt.Errorf("generate OAuth: %w", err)
+				}
+				break
 			}
-			break
 		}
 	}
 
@@ -339,6 +353,41 @@ func stageInfra(ctx context.Context, p *Pipeline) error {
 }
 
 func generateInfra(p *Pipeline) error {
+	// Build conditional OAuth2 auto-refresh block for main.go.
+	// auth.OAuthConfig only exists in generated apps with OAuth 2.0 schemes.
+	oauthBlock := ""
+	if p.Registry != nil {
+		for schemeName, scheme := range p.Registry.SecuritySchemes {
+			if scheme.Type == registry.SecurityTypeOAuth2 || scheme.Type == registry.SecurityTypeOpenIDConnect {
+				// Derive env var prefix: same sanitization as the resolver.
+				envPfx := strings.ToUpper(strings.NewReplacer("-", "_", " ", "_").Replace(p.Config.EnvVarPrefix))
+				if envPfx == "" {
+					envPfx = strings.ToUpper(strings.NewReplacer("-", "_", " ", "_").Replace(p.Config.AppName))
+				}
+				schemeSegment := strings.ToUpper(strings.NewReplacer("-", "_", " ", "_").Replace(schemeName))
+				tokenURLVar := envPfx + "_" + schemeSegment + "_TOKEN_URL"
+				clientIDVar := envPfx + "_" + schemeSegment + "_CLIENT_ID"
+				clientSecretVar := envPfx + "_" + schemeSegment + "_CLIENT_SECRET"
+
+				oauthBlock = fmt.Sprintf(`
+	// OAuth2 auto-refresh: build OAuthConfig from env vars so the auth middleware
+	// can proactively refresh near-expiry tokens on every request.
+	if oauthTokenURL := os.Getenv(%q); oauthTokenURL != "" {
+		if oauthClientID := os.Getenv(%q); oauthClientID != "" {
+			opts.OAuthConfig = &auth.OAuthConfig{
+				TokenURL:     oauthTokenURL,
+				ClientID:     oauthClientID,
+				ClientSecret: os.Getenv(%q),
+			}
+			opts.CredentialStore = auth.NewStore()
+		}
+	}
+`, tokenURLVar, clientIDVar, clientSecretVar)
+				break
+			}
+		}
+	}
+
 	// Generate main.go with layered HTTP client setup
 	mainGo := fmt.Sprintf(`package main
 
@@ -392,7 +441,7 @@ func main() {
 	// Load global params from config (global_params.headers / global_params.query)
 	opts.GlobalHeaders = viper.GetStringMapString("global_params.headers")
 	opts.GlobalQueryParams = viper.GetStringMapString("global_params.query")
-
+%s
 	cli.SetAPIClient(client.NewHTTPClient(opts))
 
 	// Apply server_url from config/env if --server flag not used
@@ -405,7 +454,7 @@ func main() {
 		os.Exit(1)
 	}
 }
-`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.AppName, p.Config.AppName, p.Config.AppName)
+`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, p.Config.AppName, p.Config.AppName, oauthBlock, p.Config.AppName)
 
 	cmdDir := filepath.Join(p.Config.OutputDir, "cmd", p.Config.AppName)
 	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
