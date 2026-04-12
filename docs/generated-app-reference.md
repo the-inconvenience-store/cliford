@@ -15,7 +15,7 @@ Every generated app includes these commands:
     logout                   # Clear stored credentials
     status                   # Show current auth state
     switch <profile>         # Switch active profile
-    refresh                  # Refresh OAuth token
+    refresh                  # Force refresh OAuth2 token for the active profile
   config
     show                     # Display current configuration
     set <key> <value>        # Set a config value
@@ -97,6 +97,59 @@ All commands include retry flags:
 | `--no-retries` | Disable retries for this request |
 | `--retry-max-attempts` | Override max retry attempts |
 | `--retry-max-elapsed` | Override max elapsed time (e.g., `5m`) |
+
+## OAuth2 token lifecycle
+
+When the spec includes an OAuth2 security scheme, the generated app manages
+token expiry transparently.
+
+### Automatic refresh on every request
+
+If the following environment variables are set, the auth transport checks
+the stored token's expiry before each request and refreshes it when fewer
+than 60 seconds remain:
+
+```bash
+export <PREFIX>_<SCHEME>_TOKEN_URL="https://auth.example.com/token"
+export <PREFIX>_<SCHEME>_CLIENT_ID="your-client-id"
+export <PREFIX>_<SCHEME>_CLIENT_SECRET="your-client-secret"   # omit for public clients
+```
+
+`<PREFIX>` is the app's env var prefix (from `cliford.yaml` or derived from
+the app name). `<SCHEME>` is the security scheme name from the spec,
+uppercased with dashes and spaces replaced by underscores.
+
+Example for an app named `petstore` with scheme `OAuth2Auth`:
+
+```bash
+export PETSTORE_OAUTH2AUTH_TOKEN_URL="https://auth.example.com/token"
+export PETSTORE_OAUTH2AUTH_CLIENT_ID="client-abc"
+```
+
+When these variables are absent, the stored token is used as-is until it
+expires, at which point the API returns a 401.
+
+### Manual refresh with `auth refresh`
+
+To force a token refresh before it expires:
+
+```bash
+./myapp auth refresh
+./myapp auth refresh --profile staging
+```
+
+`auth refresh`:
+
+1. Reads the stored OAuth2 credential for the active (or `--profile`) profile.
+2. Validates that the credential has a refresh token.
+3. Reads the token URL and client ID from env vars (same names as above).
+4. Calls the token endpoint with `grant_type=refresh_token`.
+5. Writes the new `access_token`, `expires_at`, and `refresh_token` (if
+   the provider rotates it) back to the credential store.
+6. Prints the new expiry time.
+
+If the env vars are not set, the command exits with an error message that
+names the exact variables that need to be set.
 
 ## Loading spinner
 

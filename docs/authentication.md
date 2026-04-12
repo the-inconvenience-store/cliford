@@ -94,9 +94,14 @@ Credentials stored via `auth login` are saved to the OS keychain when
 available, falling back to an encrypted file. A warning is printed when the
 encrypted file fallback is used.
 
-## How to set up OAuth 2.0 client credentials
+## How to set up OAuth 2.0
 
-For APIs using OAuth 2.0 client credentials, set three environment variables:
+The generated app supports two OAuth 2.0 flows: Client Credentials (machine-to-machine)
+and Authorization Code (user-facing interactive login).
+
+### Client Credentials flow
+
+For machine-to-machine authentication, set these environment variables:
 
 ```bash
 export PETSTORE_OAUTH2_CLIENT_ID="your-client-id"
@@ -108,11 +113,63 @@ The app automatically exchanges the client ID and secret for an access token,
 caches it in memory, and refreshes it 60 seconds before expiry. No manual
 token management is needed.
 
-If you already have an access token, set it directly:
+If you already have an access token, set it directly and the credential
+resolver uses it without performing an exchange:
 
 ```bash
 export PETSTORE_OAUTH2_TOKEN="your-access-token"
 ```
+
+### Authorization Code flow
+
+For user-facing login, run `auth login` and supply the access and refresh
+tokens obtained through your OAuth provider's authorization flow:
+
+```bash
+./petstore auth login --method oauth2 --token "your-access-token"
+```
+
+The app stores the token in the OS keychain (or encrypted file) along with
+the refresh token. On subsequent requests, the auth transport checks whether
+the stored token expires within 60 seconds and refreshes it automatically
+before attaching the `Authorization` header.
+
+### Automatic token refresh
+
+When the spec includes OAuth 2.0 schemes and the following environment
+variables are set, the auth transport refreshes near-expiry tokens without
+any user action:
+
+```bash
+export PETSTORE_OAUTH2_TOKEN_URL="https://auth.example.com/oauth/token"
+export PETSTORE_OAUTH2_CLIENT_ID="your-client-id"
+export PETSTORE_OAUTH2_CLIENT_SECRET="your-client-secret"   # optional for public clients
+```
+
+The env var names follow the same `<PREFIX>_<SCHEME>_<FIELD>` pattern as all
+other OAuth env vars, where `<SCHEME>` is the sanitized security scheme name
+from your spec.
+
+The refresh logic:
+
+1. Before each request, the auth transport checks the stored token's `ExpiresAt`.
+2. If the token expires within 60 seconds and a refresh token is stored, the
+   transport acquires a mutex, re-reads the stored credential (to avoid
+   double-refresh by concurrent goroutines), and calls the token endpoint with
+   `grant_type=refresh_token`.
+3. On success: the new `access_token`, `expires_at`, and (if rotated)
+   `refresh_token` are persisted back to the credential store.
+4. On failure: the existing token is used as-is. The next request will retry.
+
+To force a refresh immediately:
+
+```bash
+./petstore auth refresh
+./petstore auth refresh --profile staging
+```
+
+`auth refresh` reads the same env vars and returns an error with the exact
+variable names if they are not set.
 
 ## How to manage multiple profiles
 

@@ -62,7 +62,8 @@ Each layer wraps the one below it. When a request is made:
 1. VerboseTransport logs the request, then passes it down.
 2. HooksTransport calls before_request hooks, then passes it down.
 3. GlobalParamsTransport adds configured headers and query params.
-4. AuthTransport resolves and attaches credentials.
+4. AuthTransport resolves credentials. For OAuth2, it checks expiry and
+   proactively refreshes the token before attaching the Authorization header.
 5. RetryTransport sends the request. If it fails with a retryable status,
    it waits and retries through the same chain (steps 4 and 5 only).
 6. The response bubbles back up through each layer.
@@ -70,6 +71,34 @@ Each layer wraps the one below it. When a request is made:
 This layering means verbose logging sees the final request (after auth
 headers are added), and retry happens below the auth layer (so refreshed
 credentials are used on each attempt).
+
+### OAuth2 token refresh in the transport chain
+
+When an OAuth2 scheme is present and the `OAuthConfig` is configured (via
+env vars at startup), `AuthTransport.Apply()` performs this check on every
+request before setting the header:
+
+```
+token ExpiresAt parsed from stored credential
+  │
+  ├── expires > now + 60s  →  use token as-is
+  │
+  └── expires ≤ now + 60s  →  acquire mutex
+                                │
+                                ├── re-load credential from store
+                                │   (avoids double-refresh by concurrent goroutines)
+                                │
+                                ├── POST grant_type=refresh_token to token endpoint
+                                │
+                                ├── on success: update token + expiry + refresh_token,
+                                │              persist to store, use new token
+                                │
+                                └── on failure: use existing token, log to stderr
+```
+
+The mutex ensures that when multiple goroutines see the same near-expiry
+token, only one performs the refresh. The others re-read the freshly
+persisted credential after the lock is released.
 
 ## Credential resolution
 
