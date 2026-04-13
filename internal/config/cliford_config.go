@@ -87,6 +87,7 @@ type FeaturesConfig struct {
 	Documentation     DocsConfig         `mapstructure:"documentation"`
 	Distribution      DistConfig         `mapstructure:"distribution"`
 	Hooks             RuntimeHooksConfig `mapstructure:"hooks"`
+	AgentOutputFormat string             `mapstructure:"agentOutputFormat"` // Default output format when --agent is active (e.g. "toon")
 }
 
 // SpinnerConfig controls the loading animation displayed during HTTP requests.
@@ -126,12 +127,13 @@ type OperationOverride struct {
 
 // OperationCLIOverride holds CLI-specific per-operation config.
 type OperationCLIOverride struct {
-	Aliases    []string `mapstructure:"aliases"`
-	Group      string   `mapstructure:"group"`
-	Hidden     bool     `mapstructure:"hidden"`
-	Confirm    bool     `mapstructure:"confirm"`
-	ConfirmMsg string   `mapstructure:"confirmMessage"`
-	DefaultJQ  string   `mapstructure:"defaultJQ"`
+	Aliases      []string `mapstructure:"aliases"`
+	Group        string   `mapstructure:"group"`
+	Hidden       bool     `mapstructure:"hidden"`
+	Confirm      bool     `mapstructure:"confirm"`
+	ConfirmMsg   string   `mapstructure:"confirmMessage"`
+	DefaultJQ    string   `mapstructure:"defaultJQ"`
+	AgentFormat  string   `mapstructure:"agentFormat"` // Output format override when --agent is active for this operation
 }
 
 // OperationTUIOverride holds TUI-specific per-operation config.

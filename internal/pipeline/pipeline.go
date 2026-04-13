@@ -83,6 +83,14 @@ type Config struct {
 	// OperationDefaultJQs maps operation IDs to their default jq expression.
 	// Applied to the registry before CLI generation; cliford.yaml takes highest priority.
 	OperationDefaultJQs map[string]string
+
+	// AgentOutputFormat is the global default output format used when --agent is active
+	// and --output-format was not explicitly set by the user (e.g. "toon").
+	AgentOutputFormat string
+
+	// OperationAgentFormats maps operation IDs to per-operation agent output format overrides.
+	// Applied to the registry before CLI generation; overrides AgentOutputFormat per operation.
+	OperationAgentFormats map[string]string
 }
 
 // RuntimeHookDef describes a hook baked into the generated app at generation time.
@@ -239,6 +247,21 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 		if jq, ok := p.Config.OperationDefaultJQs[op.OperationID]; ok && jq != "" {
 			op.CLIDefaultJQ = jq
 		}
+	}
+
+	// Apply per-operation agent format overrides from cliford.yaml (highest priority).
+	// x-cliford-cli agentFormat (set during spec parsing) is only overwritten when
+	// the cliford.yaml value is non-empty.
+	for i := range p.Registry.Operations {
+		op := &p.Registry.Operations[i]
+		if af, ok := p.Config.OperationAgentFormats[op.OperationID]; ok && af != "" {
+			op.CLIAgentFormat = af
+		}
+	}
+
+	// Set the global agent output format on the generator.
+	if p.Config.AgentOutputFormat != "" {
+		cliGen.SetAgentOutputFormat(p.Config.AgentOutputFormat)
 	}
 
 	// Validate all non-empty defaultJQ expressions eagerly so misconfigurations
@@ -554,6 +577,7 @@ require (
 	github.com/itchyny/gojq v0.12.16
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/oauth2 v0.36.0
 	gopkg.in/yaml.v3 v3.0.1%s

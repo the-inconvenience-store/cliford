@@ -140,6 +140,7 @@ func generateCmd() *cobra.Command {
 				cfg.SpinnerEnabled = fileCfg.Features.Spinner.Enabled
 				cfg.SpinnerFrames = fileCfg.Features.Spinner.Frames
 				cfg.SpinnerMs = fileCfg.Features.Spinner.IntervalMs
+				cfg.AgentOutputFormat = fileCfg.Features.AgentOutputFormat
 				for _, h := range fileCfg.Features.Hooks.BeforeRequest {
 					cfg.BeforeRequestHooks = append(cfg.BeforeRequestHooks, pipeline.RuntimeHookDef{
 						Type: h.Type, Command: h.Command, PluginPath: h.PluginPath,
@@ -156,6 +157,12 @@ func generateCmd() *cobra.Command {
 							cfg.OperationDefaultJQs = make(map[string]string)
 						}
 						cfg.OperationDefaultJQs[id] = opOverride.CLI.DefaultJQ
+					}
+					if opOverride.CLI.AgentFormat != "" {
+						if cfg.OperationAgentFormats == nil {
+							cfg.OperationAgentFormats = make(map[string]string)
+						}
+						cfg.OperationAgentFormats[id] = opOverride.CLI.AgentFormat
 					}
 				}
 				for _, gp := range fileCfg.GlobalParams {

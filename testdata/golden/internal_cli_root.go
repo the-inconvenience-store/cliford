@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/itchyny/gojq"
 	"github.com/spf13/cobra"
+	toon "github.com/toon-format/toon-go"
 	"gopkg.in/yaml.v3"
 )
 
@@ -48,7 +49,7 @@ func RootCmd(appName string, version string) *cobra.Command {
 	}
 
 	pf := root.PersistentFlags()
-	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table")
+	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table, toon")
 	pf.StringVar(&jqFilter, "jq", "", "Filter JSON output with a jq expression (gojq syntax)")
 	pf.StringVar(&outputFile, "output-file", "", "Write response body to a file instead of stdout")
 	pf.BoolVar(&includeHeaders, "include-headers", false, "Print response headers alongside the body")
@@ -90,6 +91,16 @@ func FormatOutput(data any, format string) error {
 		return enc.Encode(data)
 	case "table":
 		return formatTable(data)
+	case "toon":
+		s, err := toon.MarshalString(data)
+		if err != nil {
+			// Fall back to JSON on encoding failure
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(data)
+		}
+		fmt.Println(s)
+		return nil
 	default:
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")

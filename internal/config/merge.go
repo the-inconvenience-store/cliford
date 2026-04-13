@@ -36,6 +36,9 @@ func MergeIntoRegistry(cfg *ClifordConfig, reg *registry.Registry) {
 		if override.CLI.ConfirmMsg != "" {
 			op.CLIConfirmMsg = override.CLI.ConfirmMsg
 		}
+		if override.CLI.AgentFormat != "" {
+			op.CLIAgentFormat = override.CLI.AgentFormat
+		}
 
 		// TUI overrides
 		if override.TUI.DisplayAs != "" {

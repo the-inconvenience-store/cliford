@@ -31,14 +31,15 @@ func DefaultSpinnerConfig() SpinnerConfig {
 
 // Generator produces Cobra CLI code from the Operation Registry.
 type Generator struct {
-	engine            *codegen.Engine
-	outputDir         string
-	appName           string
-	pkgPath           string
-	envPrefix         string
-	customCodeRegions bool
-	generateTUI       bool
-	spinner           SpinnerConfig
+	engine              *codegen.Engine
+	outputDir           string
+	appName             string
+	pkgPath             string
+	envPrefix           string
+	customCodeRegions   bool
+	generateTUI         bool
+	spinner             SpinnerConfig
+	agentOutputFormat   string // global default format when --agent is active
 }
 
 // NewGenerator creates a CLI generator.
@@ -65,6 +66,12 @@ func (g *Generator) SetCustomCodeRegions(enabled bool) {
 // SetGenerateTUI enables TUI launch wiring in the root command.
 func (g *Generator) SetGenerateTUI(enabled bool) {
 	g.generateTUI = enabled
+}
+
+// SetAgentOutputFormat sets the global default output format used when --agent
+// is active and --output-format was not explicitly set at runtime.
+func (g *Generator) SetAgentOutputFormat(format string) {
+	g.agentOutputFormat = format
 }
 
 // SetPackagePath sets the Go module path for import statements.
@@ -117,6 +124,7 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	"github.com/charmbracelet/bubbles/progress"`)
 	sb.Line(`	"github.com/itchyny/gojq"`)
 	sb.Line(`	"github.com/spf13/cobra"`)
+	sb.Line(`	toon "github.com/toon-format/toon-go"`)
 	sb.Line(`	"gopkg.in/yaml.v3"`)
 	if g.generateTUI && g.pkgPath != "" {
 		sb.Line("")
@@ -178,7 +186,7 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("	}")
 	sb.Line("")
 	sb.Line("	pf := root.PersistentFlags()")
-	sb.Line(`	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table")`)
+	sb.Line(`	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table, toon")`)
 	sb.Line(`	pf.StringVar(&jqFilter, "jq", "", "Filter JSON output with a jq expression (gojq syntax)")`)
 	sb.Line(`	pf.StringVar(&outputFile, "output-file", "", "Write response body to a file instead of stdout")`)
 	sb.Line(`	pf.BoolVar(&includeHeaders, "include-headers", false, "Print response headers alongside the body")`)
@@ -260,6 +268,16 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("		return enc.Encode(data)")
 	sb.Line(`	case "table":`)
 	sb.Line("		return formatTable(data)")
+	sb.Line(`	case "toon":`)
+	sb.Line("		s, err := toon.MarshalString(data)")
+	sb.Line("		if err != nil {")
+	sb.Line("			// Fall back to JSON on encoding failure")
+	sb.Line("			enc := json.NewEncoder(os.Stdout)")
+	sb.Line(`			enc.SetIndent("", "  ")`)
+	sb.Line("			return enc.Encode(data)")
+	sb.Line("		}")
+	sb.Line("		fmt.Println(s)")
+	sb.Line("		return nil")
 	sb.Line("	default:")
 	sb.Line("		enc := json.NewEncoder(os.Stdout)")
 	sb.Line(`		enc.SetIndent("", "  ")`)
@@ -623,6 +641,14 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 
 func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.OperationMeta, reg *registry.Registry, tagPrefix string) {
 	funcName := tagPrefix + toPascalCase(op.CLICommandName)
+
+	// Determine effective agent output format for this operation.
+	// Per-operation CLIAgentFormat (from x-cliford-cli or cliford.yaml operations) takes
+	// priority over the global agentOutputFormat baked in at generation time.
+	effectiveAgentFormat := g.agentOutputFormat
+	if op.CLIAgentFormat != "" {
+		effectiveAgentFormat = op.CLIAgentFormat
+	}
 
 	// Build existing param flag name set for collision detection
 	existingParamFlags := make(map[string]bool)
@@ -1017,7 +1043,17 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		}
 		sb.Line("					break // No more pages")
 		sb.Line("				}")
-		sb.Line("				return FormatOutput(allResults, outputFormat)")
+		if effectiveAgentFormat != "" {
+			sb.Line("				{")
+			sb.Linef("					agentFmt := %q", effectiveAgentFormat)
+			sb.Line(`					if agentMode && !cmd.Root().PersistentFlags().Changed("output-format") {`)
+			sb.Line("						return FormatOutput(allResults, agentFmt)")
+			sb.Line("					}")
+			sb.Line("					return FormatOutput(allResults, outputFormat)")
+			sb.Line("				}")
+		} else {
+			sb.Line("				return FormatOutput(allResults, outputFormat)")
+		}
 		sb.Line("			}")
 		sb.Line("")
 	}
@@ -1116,7 +1152,17 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Line("				}")
 	sb.Line("				data = map[string]any{\"headers\": hdrs, \"body\": data}")
 	sb.Line("			}")
-	sb.Line("			return FormatOutput(data, outputFormat)")
+	if effectiveAgentFormat != "" {
+		sb.Line("			{")
+		sb.Linef("				agentFmt := %q", effectiveAgentFormat)
+		sb.Line(`				if agentMode && !cmd.Root().PersistentFlags().Changed("output-format") {`)
+		sb.Line("					return FormatOutput(data, agentFmt)")
+		sb.Line("				}")
+		sb.Line("				return FormatOutput(data, outputFormat)")
+		sb.Line("			}")
+	} else {
+		sb.Line("			return FormatOutput(data, outputFormat)")
+	}
 
 	sb.Line("		},")
 	sb.Line("	}")
