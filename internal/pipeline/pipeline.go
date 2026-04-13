@@ -122,6 +122,22 @@ type Config struct {
 	// enable overrides. A true value enables request ID for that operation even
 	// when RequestIDEnabled is false.
 	OperationRequestIDOverrides map[string]bool
+
+	// Watch feature config
+	WatchEnabled bool   // features.watch.enabled
+	WatchInterval string // features.watch.defaultInterval (e.g. "5s")
+	WatchMaxCount int    // features.watch.maxCount (0 = infinite)
+
+	// OperationWatchOverrides maps operation IDs to per-operation watch overrides.
+	// Applied in stageCLI after x-cliford-cli extensions; cliford.yaml takes priority.
+	OperationWatchOverrides map[string]OperationWatchOverride
+}
+
+// OperationWatchOverride holds per-operation watch configuration from cliford.yaml.
+type OperationWatchOverride struct {
+	Enabled  *bool
+	Interval string
+	MaxCount int
 }
 
 // RuntimeHookDef describes a hook baked into the generated app at generation time.
@@ -349,6 +365,27 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 	// Pass request ID config to the CLI generator when any operation uses it.
 	if p.Config.RequestIDEnabled || len(p.Config.OperationRequestIDOverrides) > 0 {
 		cliGen.SetRequestID(p.Config.RequestIDEnabled, p.Config.RequestIDHeader)
+	}
+
+	// Apply watch feature config.
+	if p.Config.WatchEnabled {
+		cliGen.SetWatchConfig(true, p.Config.WatchInterval, p.Config.WatchMaxCount)
+	}
+
+	// Apply per-op watch overrides from cliford.yaml (highest priority; overwrites x-cliford-cli).
+	for i := range p.Registry.Operations {
+		op := &p.Registry.Operations[i]
+		if override, ok := p.Config.OperationWatchOverrides[op.OperationID]; ok {
+			if override.Enabled != nil {
+				op.CLIWatchEnabled = override.Enabled
+			}
+			if override.Interval != "" {
+				op.CLIWatchInterval = override.Interval
+			}
+			if override.MaxCount > 0 {
+				op.CLIWatchMaxCount = override.MaxCount
+			}
+		}
 	}
 
 	// Set the global agent output format on the generator.

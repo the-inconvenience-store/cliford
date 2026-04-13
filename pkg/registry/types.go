@@ -33,6 +33,9 @@ type OperationMeta struct {
 	CLIAgentFormat         string // Output format override when --agent is active (empty = use global default)
 	CLIDefaultOutputFormat string // Per-operation default --output-format (empty = global default)
 	CLIRequestID           bool   // Inject X-Request-ID (or configured header) UUID on every request
+	CLIWatchEnabled        *bool  // nil = inherit global; set by x-cliford-cli.watch.enabled or cliford.yaml
+	CLIWatchInterval       string // Per-op poll interval override (empty = use global default, e.g. "2s")
+	CLIWatchMaxCount       int    // Per-op max watch iterations (0 = use global default)
 
 	// TUI-specific (from config/extensions)
 	TUIDisplay     DisplayMode

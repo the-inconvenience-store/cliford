@@ -50,6 +50,16 @@ These flags are available on every command:
 | `--no-interactive` | | `false` | Disable interactive prompts |
 | `--tui` | | `false` | Launch full TUI mode |
 
+### Per-GET-operation flags
+
+These flags are only registered on GET operation commands (watch mode):
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--watch` | `false` | Re-run on a timer and update the display (like `watch(1)`) |
+| `--poll-interval` | `5s` | Interval between watch iterations (e.g. `2s`, `1m`) |
+| `--watch-count` | `0` | Max iterations before stopping (0 = infinite) |
+
 ### Server URL template variables
 
 When the OpenAPI spec uses a URL template (e.g.,
@@ -544,6 +554,95 @@ Aliases are visible in `config show` output alongside all other config keys.
 Alias names can shadow real commands. If you define `alias set list "pets list"`,
 the `list` alias will match before any top-level `list` command. Avoid naming
 aliases the same as existing commands unless you intend to redirect them.
+
+## Watch mode
+
+GET operation commands accept `--watch` and `--poll-interval` flags to
+continuously re-run the request on a timer and update the display — the
+same pattern as `kubectl get pods --watch` and the Unix `watch(1)` command.
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--watch` | `false` | Re-run on a timer and update the display |
+| `--poll-interval` | `5s` | Interval between iterations (e.g. `2s`, `1m`) |
+| `--watch-count` | `0` | Stop after N iterations (0 = infinite) |
+
+Setting `--poll-interval` without `--watch` also enables watch mode.
+
+### Usage examples
+
+```bash
+# Watch with configured default interval (5s)
+./myapp pets list --watch
+
+# Watch with explicit interval
+./myapp pets list --watch --poll-interval 10s
+
+# --poll-interval alone enables watch mode
+./myapp pets list --poll-interval 2s
+
+# Stop after 5 iterations
+./myapp pets list --watch --watch-count 5
+
+# Compose with output flags
+./myapp pets list --watch --output-format table --jq '.pets'
+```
+
+### TTY output
+
+When stdout is a terminal (and neither `--agent` nor `--no-interactive` is
+active), each iteration clears the screen and prints a `watch(1)`-style header:
+
+```
+Every 5s: myapp pets list    Mon Jan  2 15:04:05 2006
+
+[...response output...]
+```
+
+### Headless / agent output
+
+When stdout is not a terminal, or when `--agent` or `--no-interactive` is
+active, there is no screen clearing and no header — each iteration appends
+its output sequentially to stdout:
+
+```json
+[{"id":1,"name":"Fido"}]
+[{"id":1,"name":"Fido"},{"id":2,"name":"Rex"}]
+```
+
+This makes watch mode safe to pipe into other tools:
+
+```bash
+./myapp pets list --watch --poll-interval 5s --output-format json | jq -c '.[]'
+```
+
+### Error handling
+
+In watch mode, HTTP errors and network errors are printed to stderr and the
+loop continues. Transient errors do not kill the watch session:
+
+```
+error: HTTP 503: service temporarily unavailable
+```
+
+In non-watch mode (the default), errors behave as before — the command exits
+with a non-zero status.
+
+### Dry-run interaction
+
+`--dry-run --watch` shows the HTTP request once and exits. The request is not
+looped:
+
+```bash
+./myapp pets list --dry-run --watch   # prints request, exits immediately
+```
+
+### Configuration
+
+Watch mode is enabled globally and the defaults are configurable in
+`cliford.yaml`. See [Configuration](configuration.md#watch-mode) for details.
 
 ## Go template and JSONPath output
 

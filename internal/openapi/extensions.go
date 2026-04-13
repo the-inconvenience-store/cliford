@@ -8,17 +8,25 @@ import (
 	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
+// WatchCLIExtension holds x-cliford-cli.watch configuration.
+type WatchCLIExtension struct {
+	Enabled  *bool  `json:"enabled"`
+	Interval string `json:"interval"`
+	MaxCount int    `json:"maxCount"`
+}
+
 // CLIExtension holds x-cliford-cli data from an operation.
 type CLIExtension struct {
-	Aliases             []string `json:"aliases"`
-	Group               string   `json:"group"`
-	Hidden              bool     `json:"hidden"`
-	Confirm             bool     `json:"confirm"`
-	ConfirmMessage      string   `json:"confirmMessage"`
-	DefaultJQ           string   `json:"defaultJQ"`
-	AgentFormat         string   `json:"agentFormat"`
-	DefaultOutputFormat string   `json:"defaultOutputFormat"`
-	RequestID           bool     `json:"requestId"`
+	Aliases             []string           `json:"aliases"`
+	Group               string             `json:"group"`
+	Hidden              bool               `json:"hidden"`
+	Confirm             bool               `json:"confirm"`
+	ConfirmMessage      string             `json:"confirmMessage"`
+	DefaultJQ           string             `json:"defaultJQ"`
+	AgentFormat         string             `json:"agentFormat"`
+	DefaultOutputFormat string             `json:"defaultOutputFormat"`
+	RequestID           bool               `json:"requestId"`
+	Watch               *WatchCLIExtension `json:"watch"`
 }
 
 // TUIExtension holds x-cliford-tui data from an operation.
@@ -88,6 +96,17 @@ func ExtractExtensions(op *openapi3.Operation, meta *registry.OperationMeta) {
 				}
 				if ext.RequestID {
 					meta.CLIRequestID = true
+				}
+				if ext.Watch != nil {
+					if ext.Watch.Enabled != nil {
+						meta.CLIWatchEnabled = ext.Watch.Enabled
+					}
+					if ext.Watch.Interval != "" {
+						meta.CLIWatchInterval = ext.Watch.Interval
+					}
+					if ext.Watch.MaxCount > 0 {
+						meta.CLIWatchMaxCount = ext.Watch.MaxCount
+					}
 				}
 			}
 		}

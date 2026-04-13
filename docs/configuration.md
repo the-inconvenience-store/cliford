@@ -83,6 +83,16 @@ generation:
       templateFile:
         enabled: true                  # --template-file path flag
         hidden: false
+      watch:
+        enabled: true                  # --watch flag on GET operations
+        hidden: false
+      pollInterval:
+        enabled: true                  # --poll-interval flag on GET operations
+        hidden: false
+        default: "5s"                  # Default interval (overrides features.watch.defaultInterval for the flag default)
+      watchCount:
+        enabled: true                  # --watch-count flag on GET operations
+        hidden: false
   tui:
     enabled: false                      # Generate Bubbletea TUI
     outputDir: internal/tui
@@ -139,6 +149,10 @@ features:
   requestId:
     enabled: false                       # Auto-inject X-Request-ID UUID on every request (default: false)
     header: "X-Request-ID"              # HTTP header name (default: X-Request-ID)
+  watch:
+    enabled: true                        # Add --watch/--poll-interval/--watch-count to GET operations
+    defaultInterval: "5s"               # Default --poll-interval value
+    maxCount: 0                          # Default --watch-count value (0 = infinite)
   documentation:
     markdown: true
     llmsTxt: true
@@ -165,6 +179,11 @@ operations:
       hidden: true                      # Hide from --help but still callable
       confirm: true
       agentFormat: json                 # Override agent format for this operation
+  listJobs:
+    cli:
+      watchEnabled: true                # Opt in/out of watch flags (nil = inherit features.watch.enabled)
+      watchInterval: "10s"             # Per-op --poll-interval default
+      watchMaxCount: 30                 # Per-op --watch-count default
 
 # OAI overlay files applied before generation (see overlays.md)
 overlays:
@@ -212,6 +231,9 @@ See [Overlays](overlays.md) for the full reference.
 | `agentFormat` | `string` | Output format override when `--agent` is active (e.g. `toon`, `json`); overrides global `features.agentOutputFormat` |
 | `defaultOutputFormat` | `string` | Default `--output-format` for this operation (e.g. `table`); overridable explicitly at runtime; `--agent` still takes priority |
 | `requestId` | `bool` | Enable request ID injection for this operation even when `features.requestId.enabled` is `false` |
+| `watchEnabled` | `*bool` | Enable or disable watch flags for this GET operation; `null` (omitted) inherits `features.watch.enabled` |
+| `watchInterval` | `string` | Per-operation default `--poll-interval` value (e.g. `"10s"`); overrides global `features.watch.defaultInterval` |
+| `watchMaxCount` | `int` | Per-operation default `--watch-count` value; overrides global `features.watch.maxCount` |
 
 ### TUI overrides
 
@@ -244,6 +266,9 @@ default value.
 | `noInteractive` | `--no-interactive` | bool | `false` |
 | `tui` | `--tui` | bool | `false` (only when `generation.tui.enabled: true`) |
 | `retries` | `--no-retries`, `--retry-max-attempts`, `--retry-max-elapsed` | — | — |
+| `watch` | `--watch` | bool | `false` (GET ops only) |
+| `pollInterval` | `--poll-interval` | string | `5s` (GET ops only) |
+| `watchCount` | `--watch-count` | int | `0` (GET ops only) |
 | `template` | `--template` | string | `""` |
 | `templateFile` | `--template-file` | string | `""` |
 
@@ -323,6 +348,73 @@ If the same header name is configured in both `features.requestId` and
 `global_params`, the RunE-generated UUID takes priority: the transport-level
 generator skips headers that are already set. Both approaches together for the
 same header are harmless but redundant.
+
+## Watch mode
+
+Watch mode adds `--watch`, `--poll-interval`, and `--watch-count` flags to
+every GET operation command. It re-runs the request on a timer — identical to
+`watch(1)` — and clears the screen between iterations when stdout is a
+terminal.
+
+```yaml
+features:
+  watch:
+    enabled: true          # master feature gate (default: true)
+    defaultInterval: "5s"  # default --poll-interval value
+    maxCount: 0            # default --watch-count value (0 = infinite)
+```
+
+**Per-operation overrides:**
+
+```yaml
+operations:
+  listPets:
+    cli:
+      watchEnabled: true    # nil = inherit global (omit to inherit)
+      watchInterval: "10s"  # per-op --poll-interval default
+      watchMaxCount: 30     # per-op --watch-count default
+```
+
+**Flag defaults** (in `generation.cli.flags`):
+
+```yaml
+generation:
+  cli:
+    flags:
+      watch:
+        enabled: true
+        hidden: false
+      pollInterval:
+        enabled: true
+        hidden: false
+        default: "5s"    # overrides features.watch.defaultInterval for the flag default
+      watchCount:
+        enabled: true
+        hidden: false
+```
+
+**Priority chain (highest to lowest):**
+
+1. Runtime `--poll-interval` / `--watch-count` flags
+2. `x-cliford-cli.watch.*` extension in the OpenAPI spec
+3. `operations.<id>.cli.watchInterval` / `watchMaxCount` in `cliford.yaml`
+4. `generation.cli.flags.pollInterval.default`
+5. `features.watch.defaultInterval` / `features.watch.maxCount`
+6. Built-in: interval = `5s`, maxCount = `0`
+
+**Behavior summary:**
+
+| Scenario | Result |
+|----------|--------|
+| `--watch` on TTY | Clears screen + watch header each iteration |
+| `--watch` headless / `--agent` | No clear, sequential output |
+| `--dry-run --watch` | Shows request once, exits |
+| HTTP error in watch mode | Printed to stderr; loop continues |
+| `--watch-count N` | Exits after exactly N iterations |
+| `--poll-interval` alone | Enables watch mode implicitly |
+
+See [Watch mode](generated-app-reference.md#watch-mode) in the Generated App
+Reference for usage examples.
 
 ## Stutter removal
 

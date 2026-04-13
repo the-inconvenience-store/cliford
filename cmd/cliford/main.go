@@ -163,6 +163,9 @@ func generateCmd() *cobra.Command {
 				cfg.CLIFlags = fileCfg.Generation.CLI.Flags
 				cfg.RequestIDEnabled = fileCfg.Features.RequestID.Enabled
 				cfg.RequestIDHeader = fileCfg.Features.RequestID.Header
+				cfg.WatchEnabled = fileCfg.Features.Watch.Enabled
+				cfg.WatchInterval = fileCfg.Features.Watch.DefaultInterval
+				cfg.WatchMaxCount = fileCfg.Features.Watch.MaxCount
 
 				for id, opOverride := range fileCfg.Operations {
 					if opOverride.CLI.DefaultJQ != "" {
@@ -189,6 +192,16 @@ func generateCmd() *cobra.Command {
 						}
 						cfg.OperationRequestIDOverrides[id] = true
 					}
+					if opOverride.CLI.WatchEnabled != nil || opOverride.CLI.WatchInterval != "" || opOverride.CLI.WatchMaxCount > 0 {
+						if cfg.OperationWatchOverrides == nil {
+							cfg.OperationWatchOverrides = make(map[string]pipeline.OperationWatchOverride)
+						}
+						cfg.OperationWatchOverrides[id] = pipeline.OperationWatchOverride{
+							Enabled:  opOverride.CLI.WatchEnabled,
+							Interval: opOverride.CLI.WatchInterval,
+							MaxCount: opOverride.CLI.WatchMaxCount,
+						}
+					}
 				}
 				for _, gp := range fileCfg.GlobalParams {
 					if gp.Generate == "" {
@@ -207,6 +220,8 @@ func generateCmd() *cobra.Command {
 			} else {
 				cfg.SpinnerEnabled = true
 				cfg.CLIFlags = config.DefaultFlagsConfig()
+				cfg.WatchEnabled = true
+				cfg.WatchInterval = "5s"
 			}
 
 			p := pipeline.New(cfg)
