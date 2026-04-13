@@ -131,6 +131,7 @@ type OperationCLIOverride struct {
 	Hidden     bool     `mapstructure:"hidden"`
 	Confirm    bool     `mapstructure:"confirm"`
 	ConfirmMsg string   `mapstructure:"confirmMessage"`
+	DefaultJQ  string   `mapstructure:"defaultJQ"`
 }
 
 // OperationTUIOverride holds TUI-specific per-operation config.

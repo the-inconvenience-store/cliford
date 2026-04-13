@@ -11,12 +11,14 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/itchyny/gojq"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
 var (
 	outputFormat  string
+	jqFilter      string
 	serverURL     string
 	debugMode     bool
 	dryRunMode    bool
@@ -43,6 +45,7 @@ func RootCmd(appName string, version string) *cobra.Command {
 
 	pf := root.PersistentFlags()
 	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table")
+	pf.StringVar(&jqFilter, "jq", "", "Filter JSON output with a jq expression (gojq syntax)")
 	pf.StringVar(&serverURL, "server", "", "Override API server URL")
 	pf.StringVar(&timeout, "timeout", "30s", "Request timeout")
 	pf.BoolVarP(&debugMode, "verbose", "v", false, "Log request/response to stderr (secrets redacted)")
@@ -137,6 +140,36 @@ func formatTable(data any) error {
 		fmt.Fprintln(w, strings.Join(vals, "\t"))
 	}
 	return w.Flush()
+}
+
+// applyJQ runs a jq expression against parsed JSON data.
+// Returns a single value when the expression produces one result,
+// a slice when it produces multiple, and nil when it produces none.
+func applyJQ(input any, expr string) (any, error) {
+	query, err := gojq.Parse(expr)
+	if err != nil {
+		return nil, fmt.Errorf("parse jq expression %q: %w", expr, err)
+	}
+	iter := query.Run(input)
+	var results []any
+	for {
+		v, ok := iter.Next()
+		if !ok {
+			break
+		}
+		if jqErr, ok := v.(error); ok {
+			return nil, jqErr
+		}
+		results = append(results, v)
+	}
+	switch len(results) {
+	case 0:
+		return nil, nil
+	case 1:
+		return results[0], nil
+	default:
+		return results, nil
+	}
 }
 
 // SetAPIClient sets the shared HTTP client used by all generated commands.

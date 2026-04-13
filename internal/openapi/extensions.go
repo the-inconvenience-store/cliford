@@ -15,6 +15,7 @@ type CLIExtension struct {
 	Hidden         bool     `json:"hidden"`
 	Confirm        bool     `json:"confirm"`
 	ConfirmMessage string   `json:"confirmMessage"`
+	DefaultJQ      string   `json:"defaultJQ"`
 }
 
 // TUIExtension holds x-cliford-tui data from an operation.
@@ -72,6 +73,9 @@ func ExtractExtensions(op *openapi3.Operation, meta *registry.OperationMeta) {
 				meta.CLIConfirm = ext.Confirm
 				if ext.ConfirmMessage != "" {
 					meta.CLIConfirmMsg = ext.ConfirmMessage
+				}
+				if ext.DefaultJQ != "" {
+					meta.CLIDefaultJQ = ext.DefaultJQ
 				}
 			}
 		}

@@ -113,6 +113,7 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	"text/tabwriter"`)
 	sb.Line(`	"time"`)
 	sb.Line("")
+	sb.Line(`	"github.com/itchyny/gojq"`)
 	sb.Line(`	"github.com/spf13/cobra"`)
 	sb.Line(`	"gopkg.in/yaml.v3"`)
 	if g.generateTUI && g.pkgPath != "" {
@@ -123,6 +124,7 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("")
 	sb.Line("var (")
 	sb.Line(`	outputFormat  string`)
+	sb.Line(`	jqFilter      string`)
 	sb.Line(`	serverURL     string`)
 	sb.Line(`	debugMode     bool`)
 	sb.Line(`	dryRunMode    bool`)
@@ -173,6 +175,7 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("")
 	sb.Line("	pf := root.PersistentFlags()")
 	sb.Line(`	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table")`)
+	sb.Line(`	pf.StringVar(&jqFilter, "jq", "", "Filter JSON output with a jq expression (gojq syntax)")`)
 	sb.Line(`	pf.StringVar(&serverURL, "server", "", "Override API server URL")`)
 
 	// Per-variable --server-<varname> flags
@@ -305,6 +308,38 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`		fmt.Fprintln(w, strings.Join(vals, "\t"))`)
 	sb.Line("	}")
 	sb.Line("	return w.Flush()")
+	sb.Line("}")
+	sb.Line("")
+
+	// applyJQ helper
+	sb.Line("// applyJQ runs a jq expression against parsed JSON data.")
+	sb.Line("// Returns a single value when the expression produces one result,")
+	sb.Line("// a slice when it produces multiple, and nil when it produces none.")
+	sb.Line("func applyJQ(input any, expr string) (any, error) {")
+	sb.Line("	query, err := gojq.Parse(expr)")
+	sb.Line("	if err != nil {")
+	sb.Line(`		return nil, fmt.Errorf("parse jq expression %q: %w", expr, err)`)
+	sb.Line("	}")
+	sb.Line("	iter := query.Run(input)")
+	sb.Line("	var results []any")
+	sb.Line("	for {")
+	sb.Line("		v, ok := iter.Next()")
+	sb.Line("		if !ok {")
+	sb.Line("			break")
+	sb.Line("		}")
+	sb.Line("		if jqErr, ok := v.(error); ok {")
+	sb.Line("			return nil, jqErr")
+	sb.Line("		}")
+	sb.Line("		results = append(results, v)")
+	sb.Line("	}")
+	sb.Line("	switch len(results) {")
+	sb.Line("	case 0:")
+	sb.Line("		return nil, nil")
+	sb.Line("	case 1:")
+	sb.Line("		return results[0], nil")
+	sb.Line("	default:")
+	sb.Line("		return results, nil")
+	sb.Line("	}")
 	sb.Line("}")
 
 	// SetAPIClient function
@@ -925,6 +960,28 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		sb.Linef("			// --- CUSTOM CODE END: %s:post ---", op.OperationID)
 	}
 
+	// Emit jq filter block — simple form (no default) or effectiveJQ form (with baked default)
+	if op.CLIDefaultJQ == "" {
+		sb.Line("			if jqFilter != \"\" {")
+		sb.Line("				filtered, jqErr := applyJQ(data, jqFilter)")
+		sb.Line("				if jqErr != nil {")
+		sb.Line(`					return fmt.Errorf("--jq: %w", jqErr)`)
+		sb.Line("				}")
+		sb.Line("				data = filtered")
+		sb.Line("			}")
+	} else {
+		sb.Line("			{")
+		sb.Line("				effectiveJQ := jqFilter")
+		sb.Line("				if effectiveJQ == \"\" {")
+		sb.Linef("					effectiveJQ = %q", op.CLIDefaultJQ)
+		sb.Line("				}")
+		sb.Line("				filtered, jqErr := applyJQ(data, effectiveJQ)")
+		sb.Line("				if jqErr != nil {")
+		sb.Line(`					return fmt.Errorf("--jq: %w", jqErr)`)
+		sb.Line("				}")
+		sb.Line("				data = filtered")
+		sb.Line("			}")
+	}
 	sb.Line("			return FormatOutput(data, outputFormat)")
 
 	sb.Line("		},")

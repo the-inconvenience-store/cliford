@@ -65,7 +65,8 @@
       "Bash(xargs ls:*)",
       "Bash(grep -E \"\\\\.\\(go|yaml|md\\)$\")",
       "Bash(grep:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(ls:*)"
     ]
   }
 }

@@ -150,6 +150,14 @@ func generateCmd() *cobra.Command {
 						Type: h.Type, Command: h.Command, PluginPath: h.PluginPath,
 					})
 				}
+				for id, opOverride := range fileCfg.Operations {
+					if opOverride.CLI.DefaultJQ != "" {
+						if cfg.OperationDefaultJQs == nil {
+							cfg.OperationDefaultJQs = make(map[string]string)
+						}
+						cfg.OperationDefaultJQs[id] = opOverride.CLI.DefaultJQ
+					}
+				}
 				for _, gp := range fileCfg.GlobalParams {
 					if gp.Generate == "" {
 						continue

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/itchyny/gojq"
+
 	"github.com/the-inconvenience-store/cliford/internal/cli"
 	"github.com/the-inconvenience-store/cliford/internal/codegen"
 	"github.com/the-inconvenience-store/cliford/internal/distribution"
@@ -77,6 +79,10 @@ type Config struct {
 	// AuthAllowedMethods restricts which auth methods are offered in the
 	// generated login command. Empty means all spec-derived methods are offered.
 	AuthAllowedMethods []string
+
+	// OperationDefaultJQs maps operation IDs to their default jq expression.
+	// Applied to the registry before CLI generation; cliford.yaml takes highest priority.
+	OperationDefaultJQs map[string]string
 }
 
 // RuntimeHookDef describes a hook baked into the generated app at generation time.
@@ -225,6 +231,27 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 			IntervalMs: p.Config.SpinnerMs,
 		})
 	}
+	// Apply per-operation default JQ expressions from cliford.yaml (highest priority).
+	// x-cliford-cli defaultJQ (set during spec parsing) is only overwritten when
+	// the cliford.yaml value is non-empty.
+	for i := range p.Registry.Operations {
+		op := &p.Registry.Operations[i]
+		if jq, ok := p.Config.OperationDefaultJQs[op.OperationID]; ok && jq != "" {
+			op.CLIDefaultJQ = jq
+		}
+	}
+
+	// Validate all non-empty defaultJQ expressions eagerly so misconfigurations
+	// are caught at generation time rather than at runtime.
+	for _, op := range p.Registry.Operations {
+		if op.CLIDefaultJQ != "" {
+			if _, err := gojq.Parse(op.CLIDefaultJQ); err != nil {
+				return fmt.Errorf("operation %q: invalid defaultJQ expression %q: %w",
+					op.OperationID, op.CLIDefaultJQ, err)
+			}
+		}
+	}
+
 	if err := cliGen.Generate(p.Registry); err != nil {
 		return fmt.Errorf("generate CLI commands: %w", err)
 	}
@@ -524,6 +551,7 @@ go 1.22
 
 require (
 	github.com/hashicorp/go-plugin v1.6.2
+	github.com/itchyny/gojq v0.12.16
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/zalando/go-keyring v0.2.8

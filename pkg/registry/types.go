@@ -29,6 +29,7 @@ type OperationMeta struct {
 	CLIHidden      bool
 	CLIConfirm     bool
 	CLIConfirmMsg  string
+	CLIDefaultJQ   string // Default jq expression applied to output (empty = no default)
 
 	// TUI-specific (from config/extensions)
 	TUIDisplay     DisplayMode
