@@ -68,7 +68,18 @@
       "Bash(find:*)",
       "Bash(ls:*)",
       "Bash(python3:*)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:spec.openapis.org)",
+      "WebFetch(domain:pb33f.io)",
+      "WebFetch(domain:learn.openapis.org)",
+      "WebFetch(domain:apisyouwonthate.com)",
+      "WebFetch(domain:redocly.com)",
+      "WebFetch(domain:nordicapis.com)",
+      "WebFetch(domain:zuplo.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/speakeasy-api/openapi/refs/heads/main/overlay/overlay.go\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/speakeasy-api/openapi/refs/heads/main/overlay/apply.go\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/speakeasy-api/openapi/refs/heads/main/overlay/validate.go\")"
     ]
   }
 }

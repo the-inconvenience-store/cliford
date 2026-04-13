@@ -33,6 +33,11 @@ type ClifordConfig struct {
 	Hooks map[string][]HookDef `mapstructure:"hooks"`
 
 	GlobalParams []GlobalParamDef `mapstructure:"globalParams"`
+
+	// Overlays lists OAI Overlay Specification files to apply to the spec
+	// before generation, in order. Applied before all pipeline stages so both
+	// SDK and CLI generation see the patched spec.
+	Overlays []string `mapstructure:"overlays"`
 }
 
 // AppConfig holds identity settings for the generated app.

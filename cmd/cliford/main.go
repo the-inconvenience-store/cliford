@@ -12,6 +12,7 @@ import (
 
 	"github.com/the-inconvenience-store/cliford/internal/codegen"
 	"github.com/the-inconvenience-store/cliford/internal/config"
+	"github.com/the-inconvenience-store/cliford/internal/overlay"
 	"github.com/the-inconvenience-store/cliford/internal/pipeline"
 
 	"gopkg.in/yaml.v3"
@@ -75,6 +76,7 @@ func generateCmd() *cobra.Command {
 		dryRun        bool
 		force         bool
 		verbose       bool
+		overlayPaths  []string
 	)
 
 	cmd := &cobra.Command{
@@ -131,6 +133,13 @@ func generateCmd() *cobra.Command {
 				AppName:           appName,
 				PackageName:       pkgName,
 				EnvVarPrefix:      envPrefix,
+			}
+
+			// --overlay flag takes full priority over cliford.yaml overlays
+			if len(overlayPaths) > 0 {
+				cfg.OverlayPaths = overlayPaths
+			} else if fileCfg != nil && len(fileCfg.Overlays) > 0 {
+				cfg.OverlayPaths = fileCfg.Overlays
 			}
 
 			// Apply per-operation overrides from config
@@ -218,6 +227,7 @@ func generateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be generated without writing files")
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite without backup/diff confirmation")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Detailed pipeline progress output")
+	cmd.Flags().StringArrayVar(&overlayPaths, "overlay", nil, "Path to an OAI overlay YAML file (repeatable); overrides cliford.yaml overlays")
 
 	return cmd
 }
@@ -287,8 +297,9 @@ func initCmd() *cobra.Command {
 
 func validateCmd() *cobra.Command {
 	var (
-		specPath   string
-		configPath string
+		specPath     string
+		configPath   string
+		overlayPaths []string
 	)
 
 	cmd := &cobra.Command{
@@ -309,6 +320,33 @@ func validateCmd() *cobra.Command {
 
 			if specPath == "" {
 				return fmt.Errorf("--spec is required (or set 'spec' in cliford.yaml)")
+			}
+
+			// Resolve overlay paths: --overlay flag takes priority over cliford.yaml
+			paths := overlayPaths
+			if len(paths) == 0 && cfg != nil {
+				paths = cfg.Overlays
+			}
+
+			// Apply overlays to a temp file before validation
+			if len(paths) > 0 {
+				merged, err := overlay.Apply(specPath, paths)
+				if err != nil {
+					return fmt.Errorf("overlay error: %w", err)
+				}
+				tmp, err := os.CreateTemp("", "cliford-validate-*.yaml")
+				if err != nil {
+					return fmt.Errorf("create temp spec: %w", err)
+				}
+				defer func() {
+					tmp.Close()
+					os.Remove(tmp.Name())
+				}()
+				if _, err := tmp.Write(merged); err != nil {
+					return fmt.Errorf("write temp spec: %w", err)
+				}
+				tmp.Close()
+				specPath = tmp.Name()
 			}
 
 			result, _, err := pipeline.Validate(context.Background(), specPath, true)
@@ -334,6 +372,7 @@ func validateCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&specPath, "spec", "", "Path to OpenAPI spec file")
 	cmd.Flags().StringVar(&configPath, "config", "cliford.yaml", "Path to Cliford config file")
+	cmd.Flags().StringArrayVar(&overlayPaths, "overlay", nil, "Path to an OAI overlay YAML file (repeatable); overrides cliford.yaml overlays")
 
 	return cmd
 }

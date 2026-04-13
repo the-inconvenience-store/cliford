@@ -11,6 +11,7 @@ import (
 	"github.com/itchyny/gojq"
 
 	"github.com/the-inconvenience-store/cliford/internal/cli"
+	"github.com/the-inconvenience-store/cliford/internal/overlay"
 	"github.com/the-inconvenience-store/cliford/internal/codegen"
 	"github.com/the-inconvenience-store/cliford/internal/distribution"
 	"github.com/the-inconvenience-store/cliford/internal/docs"
@@ -91,6 +92,12 @@ type Config struct {
 	// OperationAgentFormats maps operation IDs to per-operation agent output format overrides.
 	// Applied to the registry before CLI generation; overrides AgentOutputFormat per operation.
 	OperationAgentFormats map[string]string
+
+	// OverlayPaths lists OAI Overlay Specification files to apply to the spec
+	// before all other stages. Applied in order; later overlays see the result
+	// of earlier ones. When set via --overlay flags, takes full priority over
+	// cliford.yaml overlays.
+	OverlayPaths []string
 }
 
 // RuntimeHookDef describes a hook baked into the generated app at generation time.
@@ -124,6 +131,7 @@ func New(cfg Config) *Pipeline {
 	}
 
 	p.Stages = []*Stage{
+		{Name: "overlay", Status: StagePending, RunFunc: stageOverlay},
 		{Name: "validate", Status: StagePending, RunFunc: stageValidate},
 		{Name: "sdk", Status: StagePending, RunFunc: stageSDK},
 		{Name: "cli", Status: StagePending, RunFunc: stageCLI},
@@ -136,6 +144,13 @@ func New(cfg Config) *Pipeline {
 
 // Run executes all pipeline stages in sequence.
 func (p *Pipeline) Run(ctx context.Context) error {
+	// Clean up any temp spec file written by stageOverlay.
+	defer func() {
+		if tmp, ok := p.Results["_tempSpecPath"].(string); ok {
+			os.Remove(tmp)
+		}
+	}()
+
 	for _, stage := range p.Stages {
 		if ctx.Err() != nil {
 			stage.Status = StageSkipped
@@ -179,6 +194,32 @@ func (p *Pipeline) Summary() string {
 }
 
 // --- Stage implementations (stubs for now, wired in Phase 10) ---
+
+func stageOverlay(_ context.Context, p *Pipeline) error {
+	if len(p.Config.OverlayPaths) == 0 {
+		return nil
+	}
+
+	merged, err := overlay.Apply(p.Config.SpecPath, p.Config.OverlayPaths)
+	if err != nil {
+		return fmt.Errorf("apply overlays: %w", err)
+	}
+
+	tmp, err := os.CreateTemp("", "cliford-merged-spec-*.yaml")
+	if err != nil {
+		return fmt.Errorf("create temp file for merged spec: %w", err)
+	}
+	if _, err := tmp.Write(merged); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return fmt.Errorf("write merged spec: %w", err)
+	}
+	tmp.Close()
+
+	p.Config.SpecPath = tmp.Name()
+	p.Results["_tempSpecPath"] = tmp.Name()
+	return nil
+}
 
 func stageValidate(ctx context.Context, p *Pipeline) error {
 	result, reg, err := Validate(ctx, p.Config.SpecPath, p.Config.RemoveStutter)
