@@ -32,6 +32,7 @@ type OperationMeta struct {
 	CLIDefaultJQ           string // Default jq expression applied to output (empty = no default)
 	CLIAgentFormat         string // Output format override when --agent is active (empty = use global default)
 	CLIDefaultOutputFormat string // Per-operation default --output-format (empty = global default)
+	CLIRequestID           bool   // Inject X-Request-ID (or configured header) UUID on every request
 
 	// TUI-specific (from config/extensions)
 	TUIDisplay     DisplayMode
@@ -215,6 +216,7 @@ type HookContext struct {
 	Headers         map[string]string `json:"headers"`
 	Body            []byte            `json:"body,omitempty"`
 	Timestamp       string            `json:"timestamp"`
+	RequestID       string            `json:"request_id,omitempty"`
 	StatusCode      int               `json:"status_code,omitempty"`
 	ResponseHeaders map[string]string `json:"response_headers,omitempty"`
 	ResponseBody    []byte            `json:"response_body,omitempty"`

@@ -24,6 +24,7 @@ paths:
         defaultJQ: ".pets"
         agentFormat: toon
         defaultOutputFormat: table
+        requestId: true
 ```
 
 | Field | Type | Default | Description |
@@ -36,6 +37,7 @@ paths:
 | `defaultJQ` | `string` | `""` | Default jq expression applied to output; overridable with `--jq` |
 | `agentFormat` | `string` | `""` | Output format override when `--agent` is active (e.g. `toon`, `json`); overrides global `features.agentOutputFormat` |
 | `defaultOutputFormat` | `string` | `""` | Default `--output-format` for this operation (e.g. `table`); user can override with `--output-format` at runtime |
+| `requestId` | `bool` | `false` | Enable request ID injection for this operation; generates a UUID, attaches it as a header, and embeds it in error messages |
 
 When `confirm` is `true` or the operation is a DELETE, the generated command
 displays a `[y/N]` prompt before sending the request. The `--yes` flag skips

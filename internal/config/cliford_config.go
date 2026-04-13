@@ -131,6 +131,12 @@ type AuthConfig struct {
 	Methods     []string `mapstructure:"methods"`
 }
 
+// RequestIDConfig controls automatic per-request UUID injection.
+type RequestIDConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Header  string `mapstructure:"header"` // HTTP header name (default: X-Request-ID)
+}
+
 // FeaturesConfig controls optional feature generation.
 type FeaturesConfig struct {
 	Pagination        bool               `mapstructure:"pagination"`
@@ -141,6 +147,7 @@ type FeaturesConfig struct {
 	Distribution      DistConfig         `mapstructure:"distribution"`
 	Hooks             RuntimeHooksConfig `mapstructure:"hooks"`
 	AgentOutputFormat string             `mapstructure:"agentOutputFormat"` // Default output format when --agent is active (e.g. "toon")
+	RequestID         RequestIDConfig    `mapstructure:"requestId"`
 }
 
 // SpinnerConfig controls the loading animation displayed during HTTP requests.
@@ -188,6 +195,7 @@ type OperationCLIOverride struct {
 	DefaultJQ           string   `mapstructure:"defaultJQ"`
 	AgentFormat         string   `mapstructure:"agentFormat"`          // Output format override when --agent is active for this operation
 	DefaultOutputFormat string   `mapstructure:"defaultOutputFormat"`  // Default --output-format for this operation (e.g. "table")
+	RequestID           bool     `mapstructure:"requestId"`            // Enable request ID injection for this operation
 }
 
 // OperationTUIOverride holds TUI-specific per-operation config.
@@ -298,6 +306,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("features.documentation.markdown", true)
 	v.SetDefault("features.documentation.llmsTxt", true)
 	v.SetDefault("features.distribution.goreleaser", true)
+	v.SetDefault("features.requestId.enabled", false)
+	v.SetDefault("features.requestId.header", "X-Request-ID")
 }
 
 // DefaultConfig returns a ClifordConfig with all defaults applied.

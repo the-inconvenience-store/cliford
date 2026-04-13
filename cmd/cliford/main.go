@@ -161,6 +161,8 @@ func generateCmd() *cobra.Command {
 					})
 				}
 				cfg.CLIFlags = fileCfg.Generation.CLI.Flags
+				cfg.RequestIDEnabled = fileCfg.Features.RequestID.Enabled
+				cfg.RequestIDHeader = fileCfg.Features.RequestID.Header
 
 				for id, opOverride := range fileCfg.Operations {
 					if opOverride.CLI.DefaultJQ != "" {
@@ -180,6 +182,12 @@ func generateCmd() *cobra.Command {
 							cfg.OperationDefaultOutputFormats = make(map[string]string)
 						}
 						cfg.OperationDefaultOutputFormats[id] = opOverride.CLI.DefaultOutputFormat
+					}
+					if opOverride.CLI.RequestID {
+						if cfg.OperationRequestIDOverrides == nil {
+							cfg.OperationRequestIDOverrides = make(map[string]bool)
+						}
+						cfg.OperationRequestIDOverrides[id] = true
 					}
 				}
 				for _, gp := range fileCfg.GlobalParams {

@@ -108,6 +108,20 @@ type Config struct {
 	// output format overrides (cliford.yaml highest priority, same pattern as
 	// OperationDefaultJQs).
 	OperationDefaultOutputFormats map[string]string
+
+	// RequestIDEnabled enables automatic UUID injection into every generated RunE.
+	// When true, a requestID variable is generated, set as a request header, and
+	// embedded in all error messages for server-side log correlation.
+	RequestIDEnabled bool
+
+	// RequestIDHeader is the HTTP header name used for request ID injection.
+	// Defaults to "X-Request-ID" when empty.
+	RequestIDHeader string
+
+	// OperationRequestIDOverrides maps operation IDs to per-operation request ID
+	// enable overrides. A true value enables request ID for that operation even
+	// when RequestIDEnabled is false.
+	OperationRequestIDOverrides map[string]bool
 }
 
 // RuntimeHookDef describes a hook baked into the generated app at generation time.
@@ -318,8 +332,24 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 		}
 	}
 
+	// Resolve per-operation request ID (global baseline + per-op overrides).
+	for i := range p.Registry.Operations {
+		op := &p.Registry.Operations[i]
+		if p.Config.RequestIDEnabled {
+			op.CLIRequestID = true
+		}
+		if override, ok := p.Config.OperationRequestIDOverrides[op.OperationID]; ok {
+			op.CLIRequestID = override
+		}
+	}
+
 	// Pass flags config to the CLI generator.
 	cliGen.SetFlagsConfig(p.Config.CLIFlags)
+
+	// Pass request ID config to the CLI generator when any operation uses it.
+	if p.Config.RequestIDEnabled || len(p.Config.OperationRequestIDOverrides) > 0 {
+		cliGen.SetRequestID(p.Config.RequestIDEnabled, p.Config.RequestIDHeader)
+	}
 
 	// Set the global agent output format on the generator.
 	if p.Config.AgentOutputFormat != "" {

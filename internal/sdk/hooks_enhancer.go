@@ -67,6 +67,7 @@ type HookContext struct {
 	Headers         map[string]string ` + "`" + `json:"headers"` + "`" + `
 	Body            string            ` + "`" + `json:"body,omitempty"` + "`" + `
 	Timestamp       string            ` + "`" + `json:"timestamp"` + "`" + `
+	RequestID       string            ` + "`" + `json:"request_id,omitempty"` + "`" + `
 	StatusCode      int               ` + "`" + `json:"status_code,omitempty"` + "`" + `
 	ResponseHeaders map[string]string ` + "`" + `json:"response_headers,omitempty"` + "`" + `
 	ResponseBody    string            ` + "`" + `json:"response_body,omitempty"` + "`" + `
@@ -149,12 +150,21 @@ func (r *Runner) RunAfter(req *http.Request, resp *http.Response, elapsed time.D
 }
 
 func buildRequestContext(req *http.Request) HookContext {
-	return HookContext{
+	ctx := HookContext{
 		Method:    req.Method,
 		URL:       req.URL.String(),
 		Headers:   flattenHeaders(req.Header),
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
+	// Populate RequestID from any header whose lowercase name contains "request-id".
+	// This picks up X-Request-ID, X-Correlation-Id, and similar custom names.
+	for k, vs := range req.Header {
+		if strings.Contains(strings.ToLower(k), "request-id") && len(vs) > 0 {
+			ctx.RequestID = vs[0]
+			break
+		}
+	}
+	return ctx
 }
 
 func flattenHeaders(h http.Header) map[string]string {

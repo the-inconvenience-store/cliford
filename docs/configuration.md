@@ -130,6 +130,9 @@ features:
     intervalMs: 80                      # Milliseconds between frames
   customCodeRegions: false
   agentOutputFormat: toon                # Default output format when --agent is active ("toon", "json", etc.)
+  requestId:
+    enabled: false                       # Auto-inject X-Request-ID UUID on every request (default: false)
+    header: "X-Request-ID"              # HTTP header name (default: X-Request-ID)
   documentation:
     markdown: true
     llmsTxt: true
@@ -202,6 +205,7 @@ See [Overlays](overlays.md) for the full reference.
 | `defaultJQ` | `string` | Default jq expression applied to output; overridable with `--jq` at runtime |
 | `agentFormat` | `string` | Output format override when `--agent` is active (e.g. `toon`, `json`); overrides global `features.agentOutputFormat` |
 | `defaultOutputFormat` | `string` | Default `--output-format` for this operation (e.g. `table`); overridable explicitly at runtime; `--agent` still takes priority |
+| `requestId` | `bool` | Enable request ID injection for this operation even when `features.requestId.enabled` is `false` |
 
 ### TUI overrides
 
@@ -266,6 +270,51 @@ generation:
       agent:
         enabled: false      # not needed for this CLI
 ```
+
+## Request ID
+
+When `features.requestId.enabled: true`, Cliford generates a UUID (v4) at the
+start of every command's `RunE`, attaches it as an HTTP header, and embeds it in
+all error messages. This makes it easy to find the matching server-side log entry
+when a request fails.
+
+```yaml
+features:
+  requestId:
+    enabled: true             # inject on all operations
+    header: "X-Request-ID"    # header name (default: X-Request-ID)
+```
+
+**What changes in the generated code:**
+
+- Every `RunE` declares `requestID := generateRequestID()` immediately after the
+  request is built.
+- `req.Header.Set("X-Request-ID", requestID)` attaches the UUID before execution.
+- Error messages become `HTTP 404 (request-id: 550e8400-…): not found` instead of
+  the bare `HTTP 404: not found`.
+- Dry-run output prints the header (all headers are printed, so the UUID appears
+  there for free).
+- Verbose (`--verbose`) output logs the header in the `> X-Request-ID: …` line
+  (all request headers are logged).
+
+**Per-operation enable:**
+
+Set `requestId: true` on individual operations to opt them in without enabling
+globally:
+
+```yaml
+operations:
+  createPet:
+    cli:
+      requestId: true
+```
+
+**Interaction with `global_params.generate: uuid`:**
+
+If the same header name is configured in both `features.requestId` and
+`global_params`, the RunE-generated UUID takes priority: the transport-level
+generator skips headers that are already set. Both approaches together for the
+same header are harmless but redundant.
 
 ## Stutter removal
 

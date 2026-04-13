@@ -42,6 +42,9 @@ func MergeIntoRegistry(cfg *ClifordConfig, reg *registry.Registry) {
 		if override.CLI.DefaultOutputFormat != "" {
 			op.CLIDefaultOutputFormat = override.CLI.DefaultOutputFormat
 		}
+		if override.CLI.RequestID {
+			op.CLIRequestID = true
+		}
 
 		// TUI overrides
 		if override.TUI.DisplayAs != "" {
