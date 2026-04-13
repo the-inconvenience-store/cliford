@@ -10,13 +10,14 @@ import (
 
 // CLIExtension holds x-cliford-cli data from an operation.
 type CLIExtension struct {
-	Aliases        []string `json:"aliases"`
-	Group          string   `json:"group"`
-	Hidden         bool     `json:"hidden"`
-	Confirm        bool     `json:"confirm"`
-	ConfirmMessage string   `json:"confirmMessage"`
-	DefaultJQ      string   `json:"defaultJQ"`
-	AgentFormat    string   `json:"agentFormat"`
+	Aliases             []string `json:"aliases"`
+	Group               string   `json:"group"`
+	Hidden              bool     `json:"hidden"`
+	Confirm             bool     `json:"confirm"`
+	ConfirmMessage      string   `json:"confirmMessage"`
+	DefaultJQ           string   `json:"defaultJQ"`
+	AgentFormat         string   `json:"agentFormat"`
+	DefaultOutputFormat string   `json:"defaultOutputFormat"`
 }
 
 // TUIExtension holds x-cliford-tui data from an operation.
@@ -80,6 +81,9 @@ func ExtractExtensions(op *openapi3.Operation, meta *registry.OperationMeta) {
 				}
 				if ext.AgentFormat != "" {
 					meta.CLIAgentFormat = ext.AgentFormat
+				}
+				if ext.DefaultOutputFormat != "" {
+					meta.CLIDefaultOutputFormat = ext.DefaultOutputFormat
 				}
 			}
 		}

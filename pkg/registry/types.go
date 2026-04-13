@@ -29,8 +29,9 @@ type OperationMeta struct {
 	CLIHidden      bool
 	CLIConfirm     bool
 	CLIConfirmMsg  string
-	CLIDefaultJQ   string // Default jq expression applied to output (empty = no default)
-	CLIAgentFormat string // Output format override when --agent is active (empty = use global default)
+	CLIDefaultJQ           string // Default jq expression applied to output (empty = no default)
+	CLIAgentFormat         string // Output format override when --agent is active (empty = use global default)
+	CLIDefaultOutputFormat string // Per-operation default --output-format (empty = global default)
 
 	// TUI-specific (from config/extensions)
 	TUIDisplay     DisplayMode

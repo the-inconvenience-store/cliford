@@ -11,6 +11,7 @@ import (
 	"github.com/itchyny/gojq"
 
 	"github.com/the-inconvenience-store/cliford/internal/cli"
+	"github.com/the-inconvenience-store/cliford/internal/config"
 	"github.com/the-inconvenience-store/cliford/internal/overlay"
 	"github.com/the-inconvenience-store/cliford/internal/codegen"
 	"github.com/the-inconvenience-store/cliford/internal/distribution"
@@ -98,6 +99,15 @@ type Config struct {
 	// of earlier ones. When set via --overlay flags, takes full priority over
 	// cliford.yaml overlays.
 	OverlayPaths []string
+
+	// CLIFlags controls which global flags are generated and their defaults.
+	// Defaults to all flags enabled with built-in defaults when zero value.
+	CLIFlags config.CLIFlagsConfig
+
+	// OperationDefaultOutputFormats maps operation IDs to per-operation default
+	// output format overrides (cliford.yaml highest priority, same pattern as
+	// OperationDefaultJQs).
+	OperationDefaultOutputFormats map[string]string
 }
 
 // RuntimeHookDef describes a hook baked into the generated app at generation time.
@@ -299,6 +309,17 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 			op.CLIAgentFormat = af
 		}
 	}
+
+	// Apply per-operation default output format overrides from cliford.yaml.
+	for i := range p.Registry.Operations {
+		op := &p.Registry.Operations[i]
+		if f, ok := p.Config.OperationDefaultOutputFormats[op.OperationID]; ok && f != "" {
+			op.CLIDefaultOutputFormat = f
+		}
+	}
+
+	// Pass flags config to the CLI generator.
+	cliGen.SetFlagsConfig(p.Config.CLIFlags)
 
 	// Set the global agent output format on the generator.
 	if p.Config.AgentOutputFormat != "" {

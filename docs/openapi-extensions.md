@@ -23,6 +23,7 @@ paths:
         confirmMessage: ""
         defaultJQ: ".pets"
         agentFormat: toon
+        defaultOutputFormat: table
 ```
 
 | Field | Type | Default | Description |
@@ -34,6 +35,7 @@ paths:
 | `confirmMessage` | `string` | auto-generated | Custom confirmation text |
 | `defaultJQ` | `string` | `""` | Default jq expression applied to output; overridable with `--jq` |
 | `agentFormat` | `string` | `""` | Output format override when `--agent` is active (e.g. `toon`, `json`); overrides global `features.agentOutputFormat` |
+| `defaultOutputFormat` | `string` | `""` | Default `--output-format` for this operation (e.g. `table`); user can override with `--output-format` at runtime |
 
 When `confirm` is `true` or the operation is a DELETE, the generated command
 displays a `[y/N]` prompt before sending the request. The `--yes` flag skips
@@ -44,6 +46,17 @@ expression to its response — the user does not need to pass `--jq`. The user
 can still override it by passing `--jq` with a different expression. Cliford
 validates the expression at generation time and fails immediately if it cannot
 be parsed.
+
+When `defaultOutputFormat` is set, the generated command uses that format
+when the user has not explicitly passed `--output-format`. The precedence is:
+
+1. `cliford.yaml` operation-level `defaultOutputFormat` (highest)
+2. `x-cliford-cli.defaultOutputFormat`
+3. `--output-format` global default (from `generation.cli.flags.outputFormat.default` or `"pretty"`)
+
+`--agent` mode still takes priority: when `--agent` is active and
+`--output-format` has not been explicitly changed, the agent format wins over
+`defaultOutputFormat`.
 
 ## x-cliford-tui
 

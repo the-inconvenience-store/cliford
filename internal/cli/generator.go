@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/the-inconvenience-store/cliford/internal/codegen"
+	"github.com/the-inconvenience-store/cliford/internal/config"
 	"github.com/the-inconvenience-store/cliford/pkg/registry"
 )
 
@@ -39,7 +40,8 @@ type Generator struct {
 	customCodeRegions   bool
 	generateTUI         bool
 	spinner             SpinnerConfig
-	agentOutputFormat   string // global default format when --agent is active
+	agentOutputFormat   string              // global default format when --agent is active
+	flagsCfg            config.CLIFlagsConfig // controls which flags are generated
 }
 
 // NewGenerator creates a CLI generator.
@@ -50,6 +52,7 @@ func NewGenerator(engine *codegen.Engine, outputDir, appName, envPrefix string) 
 		appName:   appName,
 		envPrefix: envPrefix,
 		spinner:   DefaultSpinnerConfig(),
+		flagsCfg:  config.DefaultFlagsConfig(),
 	}
 }
 
@@ -72,6 +75,11 @@ func (g *Generator) SetGenerateTUI(enabled bool) {
 // is active and --output-format was not explicitly set at runtime.
 func (g *Generator) SetAgentOutputFormat(format string) {
 	g.agentOutputFormat = format
+}
+
+// SetFlagsConfig sets which global flags are generated and their defaults.
+func (g *Generator) SetFlagsConfig(cfg config.CLIFlagsConfig) {
+	g.flagsCfg = cfg
 }
 
 // SetPackagePath sets the Go module path for import statements.
@@ -186,13 +194,52 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("	}")
 	sb.Line("")
 	sb.Line("	pf := root.PersistentFlags()")
-	sb.Line(`	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table, toon")`)
-	sb.Line(`	pf.StringVar(&jqFilter, "jq", "", "Filter JSON output with a jq expression (gojq syntax)")`)
-	sb.Line(`	pf.StringVar(&outputFile, "output-file", "", "Write response body to a file instead of stdout")`)
-	sb.Line(`	pf.BoolVar(&includeHeaders, "include-headers", false, "Print response headers alongside the body")`)
-	sb.Line(`	pf.StringVar(&serverURL, "server", "", "Override API server URL")`)
 
-	// Per-variable --server-<varname> flags
+	// --output-format
+	if g.flagsCfg.OutputFormat.Enabled {
+		def := g.flagsCfg.OutputFormat.Default
+		if def == "" {
+			def = "pretty"
+		}
+		sb.Linef(`	pf.StringVarP(&outputFormat, "output-format", "o", %q, "Output format: pretty, json, yaml, table, toon")`, def)
+		if g.flagsCfg.OutputFormat.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("output-format")`)
+		}
+	}
+
+	// --jq
+	if g.flagsCfg.JQ.Enabled {
+		sb.Line(`	pf.StringVar(&jqFilter, "jq", "", "Filter JSON output with a jq expression (gojq syntax)")`)
+		if g.flagsCfg.JQ.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("jq")`)
+		}
+	}
+
+	// --output-file
+	if g.flagsCfg.OutputFile.Enabled {
+		sb.Line(`	pf.StringVar(&outputFile, "output-file", "", "Write response body to a file instead of stdout")`)
+		if g.flagsCfg.OutputFile.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("output-file")`)
+		}
+	}
+
+	// --include-headers
+	if g.flagsCfg.IncludeHeaders.Enabled {
+		sb.Line(`	pf.BoolVar(&includeHeaders, "include-headers", false, "Print response headers alongside the body")`)
+		if g.flagsCfg.IncludeHeaders.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("include-headers")`)
+		}
+	}
+
+	// --server
+	if g.flagsCfg.Server.Enabled {
+		sb.Line(`	pf.StringVar(&serverURL, "server", "", "Override API server URL")`)
+		if g.flagsCfg.Server.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("server")`)
+		}
+	}
+
+	// Per-variable --server-<varname> flags (always generated; not user-configurable)
 	if len(reg.Servers) > 0 && len(reg.Servers[0].Variables) > 0 {
 		varNames := sortedStringKeys(reg.Servers[0].Variables)
 		for _, varName := range varNames {
@@ -207,15 +254,68 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 		}
 	}
 
-	sb.Line(`	pf.StringVar(&timeout, "timeout", "30s", "Request timeout")`)
-	sb.Line(`	pf.BoolVarP(&debugMode, "verbose", "v", false, "Log request/response to stderr (secrets redacted)")`)
-	sb.Line(`	_ = pf.Bool("debug", false, "Alias for --verbose")`)
-	sb.Line(`	_ = root.RegisterFlagCompletionFunc("debug", cobra.NoFileCompletions)`)
-	sb.Line(`	pf.BoolVar(&dryRunMode, "dry-run", false, "Display HTTP request without executing")`)
-	sb.Line(`	pf.BoolVarP(&yesMode, "yes", "y", false, "Skip all confirmations, use defaults")`)
-	sb.Line(`	pf.BoolVar(&agentMode, "agent", false, "Force agent mode (structured JSON, no interactive)")`)
-	sb.Line(`	pf.BoolVar(&noInteractive, "no-interactive", false, "Disable interactive prompts")`)
-	sb.Line(`	pf.BoolVar(&tuiMode, "tui", false, "Launch full TUI mode")`)
+	// --timeout
+	if g.flagsCfg.Timeout.Enabled {
+		def := g.flagsCfg.Timeout.Default
+		if def == "" {
+			def = "30s"
+		}
+		sb.Linef(`	pf.StringVar(&timeout, "timeout", %q, "Request timeout")`, def)
+		if g.flagsCfg.Timeout.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("timeout")`)
+		}
+	}
+
+	// --verbose / --debug
+	if g.flagsCfg.Verbose.Enabled {
+		sb.Line(`	pf.BoolVarP(&debugMode, "verbose", "v", false, "Log request/response to stderr (secrets redacted)")`)
+		sb.Line(`	_ = pf.Bool("debug", false, "Alias for --verbose")`)
+		sb.Line(`	_ = root.RegisterFlagCompletionFunc("debug", cobra.NoFileCompletions)`)
+		if g.flagsCfg.Verbose.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("verbose")`)
+			sb.Line(`	_ = pf.MarkHidden("debug")`)
+		}
+	}
+
+	// --dry-run
+	if g.flagsCfg.DryRun.Enabled {
+		sb.Line(`	pf.BoolVar(&dryRunMode, "dry-run", false, "Display HTTP request without executing")`)
+		if g.flagsCfg.DryRun.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("dry-run")`)
+		}
+	}
+
+	// --yes
+	if g.flagsCfg.Yes.Enabled {
+		sb.Line(`	pf.BoolVarP(&yesMode, "yes", "y", false, "Skip all confirmations, use defaults")`)
+		if g.flagsCfg.Yes.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("yes")`)
+		}
+	}
+
+	// --agent
+	if g.flagsCfg.Agent.Enabled {
+		sb.Line(`	pf.BoolVar(&agentMode, "agent", false, "Force agent mode (structured JSON, no interactive)")`)
+		if g.flagsCfg.Agent.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("agent")`)
+		}
+	}
+
+	// --no-interactive
+	if g.flagsCfg.NoInteractive.Enabled {
+		sb.Line(`	pf.BoolVar(&noInteractive, "no-interactive", false, "Disable interactive prompts")`)
+		if g.flagsCfg.NoInteractive.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("no-interactive")`)
+		}
+	}
+
+	// --tui (only when TUI is generated)
+	if g.generateTUI && g.flagsCfg.TUI.Enabled {
+		sb.Line(`	pf.BoolVar(&tuiMode, "tui", false, "Launch full TUI mode")`)
+		if g.flagsCfg.TUI.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("tui")`)
+		}
+	}
 	sb.Line("")
 
 	// Sort tags for deterministic output
@@ -951,7 +1051,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Line("")
 
 	// Apply per-request retry overrides from CLI flags
-	if g.pkgPath != "" {
+	if g.pkgPath != "" && g.flagsCfg.Retries.Enabled {
 		sb.Line("			// Apply per-request retry overrides from CLI flags")
 		sb.Line("			if cmd.Flags().Changed(\"no-retries\") || cmd.Flags().Changed(\"retry-max-attempts\") || cmd.Flags().Changed(\"retry-max-elapsed\") {")
 		sb.Line("				override := sdk.RetryOverride{}")
@@ -1043,7 +1143,22 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		}
 		sb.Line("					break // No more pages")
 		sb.Line("				}")
-		if effectiveAgentFormat != "" {
+		hasAgentFmtPag := effectiveAgentFormat != ""
+		hasOpFmtPag := op.CLIDefaultOutputFormat != ""
+		switch {
+		case hasAgentFmtPag && hasOpFmtPag:
+			sb.Line("				{")
+			sb.Linef("					agentFmt := %q", effectiveAgentFormat)
+			sb.Linef("					opFmt := %q", op.CLIDefaultOutputFormat)
+			sb.Line(`					if agentMode && !cmd.Root().PersistentFlags().Changed("output-format") {`)
+			sb.Line("						return FormatOutput(allResults, agentFmt)")
+			sb.Line("					}")
+			sb.Line(`					if !cmd.Root().PersistentFlags().Changed("output-format") {`)
+			sb.Line("						return FormatOutput(allResults, opFmt)")
+			sb.Line("					}")
+			sb.Line("					return FormatOutput(allResults, outputFormat)")
+			sb.Line("				}")
+		case hasAgentFmtPag:
 			sb.Line("				{")
 			sb.Linef("					agentFmt := %q", effectiveAgentFormat)
 			sb.Line(`					if agentMode && !cmd.Root().PersistentFlags().Changed("output-format") {`)
@@ -1051,7 +1166,15 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 			sb.Line("					}")
 			sb.Line("					return FormatOutput(allResults, outputFormat)")
 			sb.Line("				}")
-		} else {
+		case hasOpFmtPag:
+			sb.Line("				{")
+			sb.Linef("					opFmt := %q", op.CLIDefaultOutputFormat)
+			sb.Line(`					if !cmd.Root().PersistentFlags().Changed("output-format") {`)
+			sb.Line("						return FormatOutput(allResults, opFmt)")
+			sb.Line("					}")
+			sb.Line("					return FormatOutput(allResults, outputFormat)")
+			sb.Line("				}")
+		default:
 			sb.Line("				return FormatOutput(allResults, outputFormat)")
 		}
 		sb.Line("			}")
@@ -1152,7 +1275,22 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Line("				}")
 	sb.Line("				data = map[string]any{\"headers\": hdrs, \"body\": data}")
 	sb.Line("			}")
-	if effectiveAgentFormat != "" {
+	hasAgentFmt := effectiveAgentFormat != ""
+	hasOpFmt := op.CLIDefaultOutputFormat != ""
+	switch {
+	case hasAgentFmt && hasOpFmt:
+		sb.Line("			{")
+		sb.Linef("				agentFmt := %q", effectiveAgentFormat)
+		sb.Linef("				opFmt := %q", op.CLIDefaultOutputFormat)
+		sb.Line(`				if agentMode && !cmd.Root().PersistentFlags().Changed("output-format") {`)
+		sb.Line("					return FormatOutput(data, agentFmt)")
+		sb.Line("				}")
+		sb.Line(`				if !cmd.Root().PersistentFlags().Changed("output-format") {`)
+		sb.Line("					return FormatOutput(data, opFmt)")
+		sb.Line("				}")
+		sb.Line("				return FormatOutput(data, outputFormat)")
+		sb.Line("			}")
+	case hasAgentFmt:
 		sb.Line("			{")
 		sb.Linef("				agentFmt := %q", effectiveAgentFormat)
 		sb.Line(`				if agentMode && !cmd.Root().PersistentFlags().Changed("output-format") {`)
@@ -1160,7 +1298,15 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		sb.Line("				}")
 		sb.Line("				return FormatOutput(data, outputFormat)")
 		sb.Line("			}")
-	} else {
+	case hasOpFmt:
+		sb.Line("			{")
+		sb.Linef("				opFmt := %q", op.CLIDefaultOutputFormat)
+		sb.Line(`				if !cmd.Root().PersistentFlags().Changed("output-format") {`)
+		sb.Line("					return FormatOutput(data, opFmt)")
+		sb.Line("				}")
+		sb.Line("				return FormatOutput(data, outputFormat)")
+		sb.Line("			}")
+	default:
 		sb.Line("			return FormatOutput(data, outputFormat)")
 	}
 
@@ -1277,12 +1423,19 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		}
 	}
 
-	// Retry flags on all commands
-	sb.Line("")
-	sb.Line("	// Retry flags")
-	sb.Line(`	cmd.Flags().Bool("no-retries", false, "Disable retries for this request")`)
-	sb.Line(`	cmd.Flags().Int("retry-max-attempts", 0, "Override max retry attempts")`)
-	sb.Line(`	cmd.Flags().String("retry-max-elapsed", "", "Override max elapsed retry time (e.g. 5m)")`)
+	// Retry flags on all commands (conditional on flags config)
+	if g.flagsCfg.Retries.Enabled {
+		sb.Line("")
+		sb.Line("	// Retry flags")
+		sb.Line(`	cmd.Flags().Bool("no-retries", false, "Disable retries for this request")`)
+		sb.Line(`	cmd.Flags().Int("retry-max-attempts", 0, "Override max retry attempts")`)
+		sb.Line(`	cmd.Flags().String("retry-max-elapsed", "", "Override max elapsed retry time (e.g. 5m)")`)
+		if g.flagsCfg.Retries.Hidden {
+			sb.Line(`	_ = cmd.Flags().MarkHidden("no-retries")`)
+			sb.Line(`	_ = cmd.Flags().MarkHidden("retry-max-attempts")`)
+			sb.Line(`	_ = cmd.Flags().MarkHidden("retry-max-elapsed")`)
+		}
+	}
 
 	sb.Line("")
 	sb.Line("	return cmd")

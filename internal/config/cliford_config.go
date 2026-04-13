@@ -64,10 +64,58 @@ type SDKConfig struct {
 	Package   string `mapstructure:"package"`
 }
 
+// CLIFlagConfig controls a single generated persistent flag.
+type CLIFlagConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Default string `mapstructure:"default"` // only meaningful for string flags (outputFormat, timeout)
+	Hidden  bool   `mapstructure:"hidden"`
+}
+
+// CLIFlagsConfig controls which global flags are generated and their defaults.
+// All flags default to enabled=true, hidden=false, and the built-in default value,
+// so omitting the flags block entirely produces unchanged behaviour.
+type CLIFlagsConfig struct {
+	OutputFormat   CLIFlagConfig `mapstructure:"outputFormat"`
+	JQ             CLIFlagConfig `mapstructure:"jq"`
+	OutputFile     CLIFlagConfig `mapstructure:"outputFile"`
+	IncludeHeaders CLIFlagConfig `mapstructure:"includeHeaders"`
+	Server         CLIFlagConfig `mapstructure:"server"`
+	Timeout        CLIFlagConfig `mapstructure:"timeout"`
+	Verbose        CLIFlagConfig `mapstructure:"verbose"`
+	DryRun         CLIFlagConfig `mapstructure:"dryRun"`
+	Yes            CLIFlagConfig `mapstructure:"yes"`
+	Agent          CLIFlagConfig `mapstructure:"agent"`
+	NoInteractive  CLIFlagConfig `mapstructure:"noInteractive"`
+	TUI            CLIFlagConfig `mapstructure:"tui"`
+	Retries        CLIFlagConfig `mapstructure:"retries"` // controls --no-retries, --retry-max-attempts, --retry-max-elapsed
+}
+
+// DefaultFlagsConfig returns a CLIFlagsConfig with all flags enabled and
+// built-in default values. Used when generation.cli.flags is absent from
+// cliford.yaml.
+func DefaultFlagsConfig() CLIFlagsConfig {
+	return CLIFlagsConfig{
+		OutputFormat:   CLIFlagConfig{Enabled: true, Default: "pretty"},
+		JQ:             CLIFlagConfig{Enabled: true},
+		OutputFile:     CLIFlagConfig{Enabled: true},
+		IncludeHeaders: CLIFlagConfig{Enabled: true},
+		Server:         CLIFlagConfig{Enabled: true},
+		Timeout:        CLIFlagConfig{Enabled: true, Default: "30s"},
+		Verbose:        CLIFlagConfig{Enabled: true},
+		DryRun:         CLIFlagConfig{Enabled: true},
+		Yes:            CLIFlagConfig{Enabled: true},
+		Agent:          CLIFlagConfig{Enabled: true},
+		NoInteractive:  CLIFlagConfig{Enabled: true},
+		TUI:            CLIFlagConfig{Enabled: true},
+		Retries:        CLIFlagConfig{Enabled: true},
+	}
+}
+
 // CLIGenConfig controls CLI generation.
 type CLIGenConfig struct {
-	OutputDir     string `mapstructure:"outputDir"`
-	RemoveStutter bool   `mapstructure:"removeStutter"`
+	OutputDir     string         `mapstructure:"outputDir"`
+	RemoveStutter bool           `mapstructure:"removeStutter"`
+	Flags         CLIFlagsConfig `mapstructure:"flags"`
 }
 
 // TUIGenConfig controls TUI generation.
@@ -132,13 +180,14 @@ type OperationOverride struct {
 
 // OperationCLIOverride holds CLI-specific per-operation config.
 type OperationCLIOverride struct {
-	Aliases      []string `mapstructure:"aliases"`
-	Group        string   `mapstructure:"group"`
-	Hidden       bool     `mapstructure:"hidden"`
-	Confirm      bool     `mapstructure:"confirm"`
-	ConfirmMsg   string   `mapstructure:"confirmMessage"`
-	DefaultJQ    string   `mapstructure:"defaultJQ"`
-	AgentFormat  string   `mapstructure:"agentFormat"` // Output format override when --agent is active for this operation
+	Aliases             []string `mapstructure:"aliases"`
+	Group               string   `mapstructure:"group"`
+	Hidden              bool     `mapstructure:"hidden"`
+	Confirm             bool     `mapstructure:"confirm"`
+	ConfirmMsg          string   `mapstructure:"confirmMessage"`
+	DefaultJQ           string   `mapstructure:"defaultJQ"`
+	AgentFormat         string   `mapstructure:"agentFormat"`          // Output format override when --agent is active for this operation
+	DefaultOutputFormat string   `mapstructure:"defaultOutputFormat"`  // Default --output-format for this operation (e.g. "table")
 }
 
 // OperationTUIOverride holds TUI-specific per-operation config.
@@ -220,6 +269,21 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("generation.sdk.package", "sdk")
 	v.SetDefault("generation.cli.outputDir", "internal/cli")
 	v.SetDefault("generation.cli.removeStutter", true)
+	v.SetDefault("generation.cli.flags.outputFormat.enabled", true)
+	v.SetDefault("generation.cli.flags.outputFormat.default", "pretty")
+	v.SetDefault("generation.cli.flags.jq.enabled", true)
+	v.SetDefault("generation.cli.flags.outputFile.enabled", true)
+	v.SetDefault("generation.cli.flags.includeHeaders.enabled", true)
+	v.SetDefault("generation.cli.flags.server.enabled", true)
+	v.SetDefault("generation.cli.flags.timeout.enabled", true)
+	v.SetDefault("generation.cli.flags.timeout.default", "30s")
+	v.SetDefault("generation.cli.flags.verbose.enabled", true)
+	v.SetDefault("generation.cli.flags.dryRun.enabled", true)
+	v.SetDefault("generation.cli.flags.yes.enabled", true)
+	v.SetDefault("generation.cli.flags.agent.enabled", true)
+	v.SetDefault("generation.cli.flags.noInteractive.enabled", true)
+	v.SetDefault("generation.cli.flags.tui.enabled", true)
+	v.SetDefault("generation.cli.flags.retries.enabled", true)
 	v.SetDefault("generation.tui.enabled", false)
 	v.SetDefault("generation.tui.outputDir", "internal/tui")
 	v.SetDefault("auth.interactive", true)

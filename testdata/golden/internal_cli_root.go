@@ -49,20 +49,6 @@ func RootCmd(appName string, version string) *cobra.Command {
 	}
 
 	pf := root.PersistentFlags()
-	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table, toon")
-	pf.StringVar(&jqFilter, "jq", "", "Filter JSON output with a jq expression (gojq syntax)")
-	pf.StringVar(&outputFile, "output-file", "", "Write response body to a file instead of stdout")
-	pf.BoolVar(&includeHeaders, "include-headers", false, "Print response headers alongside the body")
-	pf.StringVar(&serverURL, "server", "", "Override API server URL")
-	pf.StringVar(&timeout, "timeout", "30s", "Request timeout")
-	pf.BoolVarP(&debugMode, "verbose", "v", false, "Log request/response to stderr (secrets redacted)")
-	_ = pf.Bool("debug", false, "Alias for --verbose")
-	_ = root.RegisterFlagCompletionFunc("debug", cobra.NoFileCompletions)
-	pf.BoolVar(&dryRunMode, "dry-run", false, "Display HTTP request without executing")
-	pf.BoolVarP(&yesMode, "yes", "y", false, "Skip all confirmations, use defaults")
-	pf.BoolVar(&agentMode, "agent", false, "Force agent mode (structured JSON, no interactive)")
-	pf.BoolVar(&noInteractive, "no-interactive", false, "Disable interactive prompts")
-	pf.BoolVar(&tuiMode, "tui", false, "Launch full TUI mode")
 
 	root.AddCommand(petsCmd())
 	root.AddCommand(systemCmd())

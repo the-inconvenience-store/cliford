@@ -160,6 +160,8 @@ func generateCmd() *cobra.Command {
 						Type: h.Type, Command: h.Command, PluginPath: h.PluginPath,
 					})
 				}
+				cfg.CLIFlags = fileCfg.Generation.CLI.Flags
+
 				for id, opOverride := range fileCfg.Operations {
 					if opOverride.CLI.DefaultJQ != "" {
 						if cfg.OperationDefaultJQs == nil {
@@ -172,6 +174,12 @@ func generateCmd() *cobra.Command {
 							cfg.OperationAgentFormats = make(map[string]string)
 						}
 						cfg.OperationAgentFormats[id] = opOverride.CLI.AgentFormat
+					}
+					if opOverride.CLI.DefaultOutputFormat != "" {
+						if cfg.OperationDefaultOutputFormats == nil {
+							cfg.OperationDefaultOutputFormats = make(map[string]string)
+						}
+						cfg.OperationDefaultOutputFormats[id] = opOverride.CLI.DefaultOutputFormat
 					}
 				}
 				for _, gp := range fileCfg.GlobalParams {
@@ -190,6 +198,7 @@ func generateCmd() *cobra.Command {
 				}
 			} else {
 				cfg.SpinnerEnabled = true
+				cfg.CLIFlags = config.DefaultFlagsConfig()
 			}
 
 			p := pipeline.New(cfg)

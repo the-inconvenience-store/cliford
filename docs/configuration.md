@@ -35,6 +35,48 @@ generation:
   cli:
     outputDir: internal/cli
     removeStutter: true                 # "listPets" under "pets" becomes "list"
+    flags:                              # Control which global flags are generated (all enabled by default)
+      outputFormat:
+        enabled: true
+        default: "pretty"              # Default --output-format value
+        hidden: false
+      jq:
+        enabled: true
+        hidden: false
+      outputFile:
+        enabled: true
+        hidden: false
+      includeHeaders:
+        enabled: true
+        hidden: false
+      server:
+        enabled: true
+        hidden: false
+      timeout:
+        enabled: true
+        default: "30s"                 # Default --timeout value
+        hidden: false
+      verbose:
+        enabled: true
+        hidden: false
+      dryRun:
+        enabled: true
+        hidden: false
+      yes:
+        enabled: true
+        hidden: false
+      agent:
+        enabled: true
+        hidden: false
+      noInteractive:
+        enabled: true
+        hidden: false
+      tui:
+        enabled: true                  # Only relevant when generation.tui.enabled is true
+        hidden: false
+      retries:
+        enabled: true                  # Controls --no-retries, --retry-max-attempts, --retry-max-elapsed
+        hidden: false
   tui:
     enabled: false                      # Generate Bubbletea TUI
     outputDir: internal/tui
@@ -159,6 +201,7 @@ See [Overlays](overlays.md) for the full reference.
 | `confirmMessage` | `string` | Custom confirmation prompt text |
 | `defaultJQ` | `string` | Default jq expression applied to output; overridable with `--jq` at runtime |
 | `agentFormat` | `string` | Output format override when `--agent` is active (e.g. `toon`, `json`); overrides global `features.agentOutputFormat` |
+| `defaultOutputFormat` | `string` | Default `--output-format` for this operation (e.g. `table`); overridable explicitly at runtime; `--agent` still takes priority |
 
 ### TUI overrides
 
@@ -166,6 +209,63 @@ See [Overlays](overlays.md) for the full reference.
 |-------|------|-------------|
 | `displayAs` | `string` | `table`, `detail`, `form`, `custom` |
 | `refreshable` | `bool` | Enable auto-refresh in TUI |
+
+## Generated flags
+
+Cliford bakes a fixed set of global persistent flags into the root command of
+every generated CLI. `generation.cli.flags` lets you control each one
+individually — disable it entirely, hide it from `--help`, or change its
+default value.
+
+### Flag reference
+
+| Flag key | Generated flag(s) | Type | Built-in default |
+|----------|-------------------|------|-----------------|
+| `outputFormat` | `--output-format` / `-o` | string | `pretty` |
+| `jq` | `--jq` | string | `""` |
+| `outputFile` | `--output-file` | string | `""` |
+| `includeHeaders` | `--include-headers` | bool | `false` |
+| `server` | `--server` | string | `""` |
+| `timeout` | `--timeout` | string | `30s` |
+| `verbose` | `--verbose` / `-v` + `--debug` alias | bool | `false` |
+| `dryRun` | `--dry-run` | bool | `false` |
+| `yes` | `--yes` / `-y` | bool | `false` |
+| `agent` | `--agent` | bool | `false` |
+| `noInteractive` | `--no-interactive` | bool | `false` |
+| `tui` | `--tui` | bool | `false` (only when `generation.tui.enabled: true`) |
+| `retries` | `--no-retries`, `--retry-max-attempts`, `--retry-max-elapsed` | — | — |
+
+### `enabled: false`
+
+The flag is not registered. The backing variable is still declared in the
+generated code (always holding its zero value), so all generated logic that
+reads it continues to compile and runs safely.
+
+### `hidden: true`
+
+The flag is registered normally but hidden via `MarkHidden` so it does not
+appear in `--help`. It still works when passed explicitly.
+
+### `default` (string flags only)
+
+Overrides the baked-in default value for `outputFormat` (default `"pretty"`)
+and `timeout` (default `"30s"`). Ignored for bool/int flags.
+
+### Example — hide internal flags, change defaults
+
+```yaml
+generation:
+  cli:
+    flags:
+      outputFormat:
+        default: "table"    # list-heavy APIs default to table view
+      jq:
+        hidden: true        # power-user flag; keep it working but out of help
+      dryRun:
+        hidden: true
+      agent:
+        enabled: false      # not needed for this CLI
+```
 
 ## Stutter removal
 
