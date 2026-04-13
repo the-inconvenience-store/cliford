@@ -30,7 +30,9 @@ These flags are available on every command:
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--output-format` | `-o` | `pretty` | Output format: `pretty`, `json`, `yaml`, `table`, `toon` |
+| `--output-format` | `-o` | `pretty` | Output format: `pretty`, `json`, `yaml`, `table`, `toon`, `go-template`, `jsonpath` |
+| `--template` | | `""` | Go template or JSONPath expression (used with `-o go-template\|jsonpath`) |
+| `--template-file` | | `""` | Path to a Go template or JSONPath file (used with `-o go-template\|jsonpath`) |
 | `--jq` | | `""` | Filter JSON output with a jq expression (gojq syntax) |
 | `--output-file` | | `""` | Write response body to a file instead of stdout |
 | `--include-headers` | | `false` | Print response headers alongside the body |
@@ -310,6 +312,10 @@ The `--output-format` (or `-o`) flag controls how responses are displayed:
 | `yaml` | YAML |
 | `table` | ASCII table with column headers from response schema properties |
 | `toon` | TOON columnar format — token-efficient for AI agents (see below) |
+| `go-template` | Apply a Go `text/template` expression to the response |
+| `go-template-file` | Load a Go template from a file: `-o go-template-file=./pod.tmpl` |
+| `jsonpath` | Apply a JSONPath expression (kubectl-compatible syntax) |
+| `jsonpath-file` | Load a JSONPath expression from a file: `-o jsonpath-file=./expr.txt` |
 
 Table output uses sorted column headers and `text/tabwriter` alignment. For
 empty arrays, it prints "No results." instead of an empty table.
@@ -461,6 +467,115 @@ paths:
 
 Cliford validates the expression at generation time and returns an error
 immediately if it cannot be parsed, rather than failing at runtime.
+
+## Go template and JSONPath output
+
+Two additional output formats let you extract and format specific fields from
+responses without needing `jq` or external tools — particularly useful for
+scripting and for users who are already familiar with kubectl's `-o` flag.
+
+### Go template (`-o go-template`)
+
+Applies a Go [`text/template`](https://pkg.go.dev/text/template) expression to
+the parsed JSON response. The template receives the decoded response as its
+data object (`.`).
+
+```bash
+# Single field — inline expression
+./myapp pets list -o 'go-template={{range .pets}}{{.name}}{{"\n"}}{{end}}'
+
+# Separate --template flag (cleaner for complex templates)
+./myapp pets list -o go-template --template '{{range .pets}}{{.id}}: {{.name}}{{"\n"}}{{end}}'
+
+# Load template from a file
+./myapp pets list -o go-template --template-file ./pets.tmpl
+
+# Inline file path shorthand (no --template-file needed)
+./myapp pods list -o 'go-template-file=./pod.tmpl'
+```
+
+**Available template functions:**
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `json` | `json(v any) string` | Marshal a value to a compact JSON string |
+
+Example using the `json` function:
+
+```bash
+./myapp pets get --id 1 -o go-template --template '{{json .tags}}'
+# → ["indoor","vaccinated"]
+```
+
+### JSONPath (`-o jsonpath`)
+
+Applies a JSONPath expression to the response. Supports kubectl-compatible
+curly-brace syntax (`{.items[*].name}`), standard dot-notation, and `$`
+prefix — all are interchangeable.
+
+The `[*]` wildcard is converted to the gojq `[]` iterator internally;
+no new dependencies are required.
+
+```bash
+# kubectl-style curly braces
+./myapp pods list -o 'jsonpath={.items[*].metadata.name}'
+
+# Standard dot-notation (no braces needed)
+./myapp pods list -o 'jsonpath=.items[*].metadata.name'
+
+# Separate --template flag
+./myapp pods list -o jsonpath --template '{.items[*].metadata.name}'
+
+# Load expression from a file
+./myapp pods list -o jsonpath-file=./expr.txt
+./myapp pods list -o jsonpath --template-file ./expr.txt
+```
+
+**Output rules (kubectl-compatible):**
+
+| Result type | Output |
+|------------|--------|
+| String | Printed as-is followed by a newline |
+| Array of strings | Space-separated on a single line |
+| Array of mixed types | Space-separated; non-strings are JSON-encoded inline |
+| Other | JSON-encoded, followed by a newline |
+| Null / no match | No output |
+
+### Composing with `--jq`
+
+`--jq` runs first (before `FormatOutput`), so template formats see the
+already-filtered data. This lets you pre-shape the data with jq and then
+apply a template for final rendering:
+
+```bash
+# --jq extracts .pets, then go-template formats each item
+./myapp pets list --jq '.pets' -o go-template \
+  --template '{{range .}}{{.id}}: {{.name}}{{"\n"}}{{end}}'
+```
+
+### Per-operation default template format
+
+Use `defaultOutputFormat` to bake a template format into a command so users
+get structured output without specifying `-o` every time:
+
+```yaml
+# cliford.yaml
+operations:
+  listPets:
+    cli:
+      defaultOutputFormat: "go-template={{range .pets}}{{.name}}{{\"\\n\"}}{{end}}"
+```
+
+```yaml
+# OpenAPI extension
+paths:
+  /items:
+    get:
+      x-cliford-cli:
+        defaultOutputFormat: "jsonpath={.items[*].name}"
+```
+
+The user can still override the default by passing `-o` explicitly.
 
 ## File downloads (`--output-file`)
 

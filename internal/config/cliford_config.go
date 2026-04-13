@@ -87,7 +87,9 @@ type CLIFlagsConfig struct {
 	Agent          CLIFlagConfig `mapstructure:"agent"`
 	NoInteractive  CLIFlagConfig `mapstructure:"noInteractive"`
 	TUI            CLIFlagConfig `mapstructure:"tui"`
-	Retries        CLIFlagConfig `mapstructure:"retries"` // controls --no-retries, --retry-max-attempts, --retry-max-elapsed
+	Retries        CLIFlagConfig `mapstructure:"retries"`      // controls --no-retries, --retry-max-attempts, --retry-max-elapsed
+	Template       CLIFlagConfig `mapstructure:"template"`     // --template expression flag
+	TemplateFile   CLIFlagConfig `mapstructure:"templateFile"` // --template-file path flag
 }
 
 // DefaultFlagsConfig returns a CLIFlagsConfig with all flags enabled and
@@ -108,6 +110,8 @@ func DefaultFlagsConfig() CLIFlagsConfig {
 		NoInteractive:  CLIFlagConfig{Enabled: true},
 		TUI:            CLIFlagConfig{Enabled: true},
 		Retries:        CLIFlagConfig{Enabled: true},
+		Template:       CLIFlagConfig{Enabled: true},
+		TemplateFile:   CLIFlagConfig{Enabled: true},
 	}
 }
 
@@ -292,6 +296,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("generation.cli.flags.noInteractive.enabled", true)
 	v.SetDefault("generation.cli.flags.tui.enabled", true)
 	v.SetDefault("generation.cli.flags.retries.enabled", true)
+	v.SetDefault("generation.cli.flags.template.enabled", true)
+	v.SetDefault("generation.cli.flags.templateFile.enabled", true)
 	v.SetDefault("generation.tui.enabled", false)
 	v.SetDefault("generation.tui.outputDir", "internal/tui")
 	v.SetDefault("auth.interactive", true)

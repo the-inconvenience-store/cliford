@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
+	"text/template"
 	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -32,6 +33,8 @@ var (
 	noInteractive  bool
 	tuiMode        bool
 	timeout        string
+	templateExpr   string
+	templateFile   string
 
 	// apiClient is the shared HTTP client with auth, retry, and verbose transports.
 	// Set via SetAPIClient() from main.go; falls back to a default client if nil.
@@ -49,6 +52,7 @@ func RootCmd(appName string, version string) *cobra.Command {
 	}
 
 	pf := root.PersistentFlags()
+	_ = pf
 
 	root.AddCommand(petsCmd())
 	root.AddCommand(systemCmd())
@@ -66,8 +70,16 @@ func RootCmd(appName string, version string) *cobra.Command {
 }
 
 // FormatOutput renders data in the requested output format.
+// Supports inline expressions: -o 'go-template={{.name}}' or -o 'jsonpath={.items[*].name}'.
 func FormatOutput(data any, format string) error {
-	switch strings.ToLower(format) {
+	// Extract inline expression: "go-template={{.name}}" → base="go-template", expr="{{.name}}"
+	baseFormat := format
+	inlineExpr := ""
+	if idx := strings.IndexByte(format, '='); idx > 0 {
+		baseFormat = format[:idx]
+		inlineExpr = format[idx+1:]
+	}
+	switch strings.ToLower(baseFormat) {
 	case "json":
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -87,6 +99,56 @@ func FormatOutput(data any, format string) error {
 		}
 		fmt.Println(s)
 		return nil
+	case "go-template":
+		tmplStr := inlineExpr
+		if tmplStr == "" {
+			tmplStr = templateExpr
+		}
+		if tmplStr == "" && templateFile != "" {
+			b, err := os.ReadFile(templateFile)
+			if err != nil {
+				return fmt.Errorf("read template file: %w", err)
+			}
+			tmplStr = string(b)
+		}
+		if tmplStr == "" {
+			return fmt.Errorf("--output-format go-template requires --template or --template-file")
+		}
+		return applyGoTemplate(data, tmplStr)
+	case "go-template-file":
+		if inlineExpr == "" {
+			return fmt.Errorf("--output-format go-template-file requires a file path: -o go-template-file=<path>")
+		}
+		b, err := os.ReadFile(inlineExpr)
+		if err != nil {
+			return fmt.Errorf("read template file: %w", err)
+		}
+		return applyGoTemplate(data, string(b))
+	case "jsonpath":
+		expr := inlineExpr
+		if expr == "" {
+			expr = templateExpr
+		}
+		if expr == "" && templateFile != "" {
+			b, err := os.ReadFile(templateFile)
+			if err != nil {
+				return fmt.Errorf("read jsonpath file: %w", err)
+			}
+			expr = string(b)
+		}
+		if expr == "" {
+			return fmt.Errorf("--output-format jsonpath requires --template or --template-file")
+		}
+		return applyJSONPath(data, expr)
+	case "jsonpath-file":
+		if inlineExpr == "" {
+			return fmt.Errorf("--output-format jsonpath-file requires a file path: -o jsonpath-file=<path>")
+		}
+		b, err := os.ReadFile(inlineExpr)
+		if err != nil {
+			return fmt.Errorf("read jsonpath file: %w", err)
+		}
+		return applyJSONPath(data, string(b))
 	default:
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -173,6 +235,60 @@ func applyJQ(input any, expr string) (any, error) {
 	default:
 		return results, nil
 	}
+}
+
+// applyGoTemplate renders data using a Go text/template expression.
+// A "json" template function is available to serialize values inline.
+func applyGoTemplate(data any, tmplStr string) error {
+	tmpl, err := template.New("output").Funcs(template.FuncMap{
+		"json": func(v any) (string, error) {
+			b, err := json.Marshal(v)
+			return string(b), err
+		},
+	}).Parse(tmplStr)
+	if err != nil {
+		return fmt.Errorf("parse template: %w", err)
+	}
+	return tmpl.Execute(os.Stdout, data)
+}
+
+// applyJSONPath evaluates a JSONPath expression against data using gojq.
+// Supports kubectl-style {.items[*].name} syntax: curly braces are stripped,
+// [*] is converted to the jq [] iterator, and leading $ is removed.
+func applyJSONPath(data any, expr string) error {
+	expr = strings.TrimSpace(expr)
+	if len(expr) >= 2 && expr[0] == '{' && expr[len(expr)-1] == '}' {
+		expr = expr[1 : len(expr)-1]
+	}
+	expr = strings.TrimPrefix(expr, "$")
+	jqExpr := strings.ReplaceAll(expr, "[*]", "[]")
+	result, err := applyJQ(data, jqExpr)
+	if err != nil {
+		return fmt.Errorf("jsonpath: %w", err)
+	}
+	if result == nil {
+		return nil
+	}
+	switch r := result.(type) {
+	case []any:
+		parts := make([]string, 0, len(r))
+		for _, item := range r {
+			switch v := item.(type) {
+			case string:
+				parts = append(parts, v)
+			default:
+				b, _ := json.Marshal(v)
+				parts = append(parts, string(b))
+			}
+		}
+		fmt.Fprintln(os.Stdout, strings.Join(parts, " "))
+	case string:
+		fmt.Fprintln(os.Stdout, r)
+	default:
+		b, _ := json.Marshal(result)
+		fmt.Fprintln(os.Stdout, string(b))
+	}
+	return nil
 }
 
 // isTTYStderr reports whether stderr is connected to a terminal.

@@ -159,6 +159,7 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	"sort"`)
 	sb.Line(`	"strings"`)
 	sb.Line(`	"text/tabwriter"`)
+	sb.Line(`	"text/template"`)
 	sb.Line(`	"time"`)
 	sb.Line("")
 	sb.Line(`	"github.com/charmbracelet/bubbles/progress"`)
@@ -185,6 +186,8 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line(`	noInteractive bool`)
 	sb.Line(`	tuiMode       bool`)
 	sb.Line(`	timeout       string`)
+	sb.Line(`	templateExpr  string`)
+	sb.Line(`	templateFile  string`)
 	sb.Line("")
 	sb.Line("	// apiClient is the shared HTTP client with auth, retry, and verbose transports.")
 	sb.Line("	// Set via SetAPIClient() from main.go; falls back to a default client if nil.")
@@ -233,7 +236,7 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 		if def == "" {
 			def = "pretty"
 		}
-		sb.Linef(`	pf.StringVarP(&outputFormat, "output-format", "o", %q, "Output format: pretty, json, yaml, table, toon")`, def)
+		sb.Linef(`	pf.StringVarP(&outputFormat, "output-format", "o", %q, "Output format: pretty, json, yaml, table, toon, go-template, jsonpath")`, def)
 		if g.flagsCfg.OutputFormat.Hidden {
 			sb.Line(`	_ = pf.MarkHidden("output-format")`)
 		}
@@ -341,6 +344,22 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 		}
 	}
 
+	// --template
+	if g.flagsCfg.Template.Enabled {
+		sb.Line(`	pf.StringVar(&templateExpr, "template", "", "Go template or JSONPath expression (use with -o go-template|jsonpath)")`)
+		if g.flagsCfg.Template.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("template")`)
+		}
+	}
+
+	// --template-file
+	if g.flagsCfg.TemplateFile.Enabled {
+		sb.Line(`	pf.StringVar(&templateFile, "template-file", "", "Path to Go template or JSONPath file (use with -o go-template|jsonpath)")`)
+		if g.flagsCfg.TemplateFile.Hidden {
+			sb.Line(`	_ = pf.MarkHidden("template-file")`)
+		}
+	}
+
 	// --tui (only when TUI is generated)
 	if g.generateTUI && g.flagsCfg.TUI.Enabled {
 		sb.Line(`	pf.BoolVar(&tuiMode, "tui", false, "Launch full TUI mode")`)
@@ -348,6 +367,8 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 			sb.Line(`	_ = pf.MarkHidden("tui")`)
 		}
 	}
+	// Ensure pf is considered used even when all flags are disabled.
+	sb.Line("	_ = pf")
 	sb.Line("")
 
 	// Sort tags for deterministic output
@@ -389,8 +410,16 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 
 	// FormatOutput helper
 	sb.Line("// FormatOutput renders data in the requested output format.")
+	sb.Line("// Supports inline expressions: -o 'go-template={{.name}}' or -o 'jsonpath={.items[*].name}'.")
 	sb.Line("func FormatOutput(data any, format string) error {")
-	sb.Line(`	switch strings.ToLower(format) {`)
+	sb.Line("	// Extract inline expression: \"go-template={{.name}}\" → base=\"go-template\", expr=\"{{.name}}\"")
+	sb.Line("	baseFormat := format")
+	sb.Line("	inlineExpr := \"\"")
+	sb.Line("	if idx := strings.IndexByte(format, '='); idx > 0 {")
+	sb.Line("		baseFormat = format[:idx]")
+	sb.Line("		inlineExpr = format[idx+1:]")
+	sb.Line("	}")
+	sb.Line("	switch strings.ToLower(baseFormat) {")
 	sb.Line(`	case "json":`)
 	sb.Line("		enc := json.NewEncoder(os.Stdout)")
 	sb.Line(`		enc.SetIndent("", "  ")`)
@@ -410,6 +439,48 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("		}")
 	sb.Line("		fmt.Println(s)")
 	sb.Line("		return nil")
+	sb.Line(`	case "go-template":`)
+	sb.Line("		tmplStr := inlineExpr")
+	sb.Line("		if tmplStr == \"\" {")
+	sb.Line("			tmplStr = templateExpr")
+	sb.Line("		}")
+	sb.Line("		if tmplStr == \"\" && templateFile != \"\" {")
+	sb.Line("			b, err := os.ReadFile(templateFile)")
+	sb.Line(`			if err != nil { return fmt.Errorf("read template file: %w", err) }`)
+	sb.Line("			tmplStr = string(b)")
+	sb.Line("		}")
+	sb.Line("		if tmplStr == \"\" {")
+	sb.Line(`			return fmt.Errorf("--output-format go-template requires --template or --template-file")`)
+	sb.Line("		}")
+	sb.Line("		return applyGoTemplate(data, tmplStr)")
+	sb.Line(`	case "go-template-file":`)
+	sb.Line("		if inlineExpr == \"\" {")
+	sb.Line(`			return fmt.Errorf("--output-format go-template-file requires a file path: -o go-template-file=<path>")`)
+	sb.Line("		}")
+	sb.Line("		b, err := os.ReadFile(inlineExpr)")
+	sb.Line(`		if err != nil { return fmt.Errorf("read template file: %w", err) }`)
+	sb.Line("		return applyGoTemplate(data, string(b))")
+	sb.Line(`	case "jsonpath":`)
+	sb.Line("		expr := inlineExpr")
+	sb.Line("		if expr == \"\" {")
+	sb.Line("			expr = templateExpr")
+	sb.Line("		}")
+	sb.Line("		if expr == \"\" && templateFile != \"\" {")
+	sb.Line("			b, err := os.ReadFile(templateFile)")
+	sb.Line(`			if err != nil { return fmt.Errorf("read jsonpath file: %w", err) }`)
+	sb.Line("			expr = string(b)")
+	sb.Line("		}")
+	sb.Line("		if expr == \"\" {")
+	sb.Line(`			return fmt.Errorf("--output-format jsonpath requires --template or --template-file")`)
+	sb.Line("		}")
+	sb.Line("		return applyJSONPath(data, expr)")
+	sb.Line(`	case "jsonpath-file":`)
+	sb.Line("		if inlineExpr == \"\" {")
+	sb.Line(`			return fmt.Errorf("--output-format jsonpath-file requires a file path: -o jsonpath-file=<path>")`)
+	sb.Line("		}")
+	sb.Line("		b, err := os.ReadFile(inlineExpr)")
+	sb.Line(`		if err != nil { return fmt.Errorf("read jsonpath file: %w", err) }`)
+	sb.Line("		return applyJSONPath(data, string(b))")
 	sb.Line("	default:")
 	sb.Line("		enc := json.NewEncoder(os.Stdout)")
 	sb.Line(`		enc.SetIndent("", "  ")`)
@@ -496,6 +567,64 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("	default:")
 	sb.Line("		return results, nil")
 	sb.Line("	}")
+	sb.Line("}")
+	sb.Line("")
+
+	// applyGoTemplate helper
+	sb.Line("// applyGoTemplate renders data using a Go text/template expression.")
+	sb.Line("// A \"json\" template function is available to serialize values inline.")
+	sb.Line("func applyGoTemplate(data any, tmplStr string) error {")
+	sb.Line("	tmpl, err := template.New(\"output\").Funcs(template.FuncMap{")
+	sb.Line("		\"json\": func(v any) (string, error) {")
+	sb.Line("			b, err := json.Marshal(v)")
+	sb.Line("			return string(b), err")
+	sb.Line("		},")
+	sb.Line("	}).Parse(tmplStr)")
+	sb.Line("	if err != nil {")
+	sb.Line(`		return fmt.Errorf("parse template: %w", err)`)
+	sb.Line("	}")
+	sb.Line("	return tmpl.Execute(os.Stdout, data)")
+	sb.Line("}")
+	sb.Line("")
+
+	// applyJSONPath helper
+	sb.Line("// applyJSONPath evaluates a JSONPath expression against data using gojq.")
+	sb.Line("// Supports kubectl-style {.items[*].name} syntax: curly braces are stripped,")
+	sb.Line("// [*] is converted to the jq [] iterator, and leading $ is removed.")
+	sb.Line("func applyJSONPath(data any, expr string) error {")
+	sb.Line("	expr = strings.TrimSpace(expr)")
+	sb.Line("	if len(expr) >= 2 && expr[0] == '{' && expr[len(expr)-1] == '}' {")
+	sb.Line("		expr = expr[1 : len(expr)-1]")
+	sb.Line("	}")
+	sb.Line("	expr = strings.TrimPrefix(expr, \"$\")")
+	sb.Line(`	jqExpr := strings.ReplaceAll(expr, "[*]", "[]")`)
+	sb.Line("	result, err := applyJQ(data, jqExpr)")
+	sb.Line("	if err != nil {")
+	sb.Line(`		return fmt.Errorf("jsonpath: %w", err)`)
+	sb.Line("	}")
+	sb.Line("	if result == nil {")
+	sb.Line("		return nil")
+	sb.Line("	}")
+	sb.Line("	switch r := result.(type) {")
+	sb.Line("	case []any:")
+	sb.Line("		parts := make([]string, 0, len(r))")
+	sb.Line("		for _, item := range r {")
+	sb.Line("			switch v := item.(type) {")
+	sb.Line("			case string:")
+	sb.Line("				parts = append(parts, v)")
+	sb.Line("			default:")
+	sb.Line("				b, _ := json.Marshal(v)")
+	sb.Line("				parts = append(parts, string(b))")
+	sb.Line("			}")
+	sb.Line("		}")
+	sb.Line(`		fmt.Fprintln(os.Stdout, strings.Join(parts, " "))`)
+	sb.Line("	case string:")
+	sb.Line("		fmt.Fprintln(os.Stdout, r)")
+	sb.Line("	default:")
+	sb.Line("		b, _ := json.Marshal(result)")
+	sb.Line("		fmt.Fprintln(os.Stdout, string(b))")
+	sb.Line("	}")
+	sb.Line("	return nil")
 	sb.Line("}")
 	sb.Line("")
 
@@ -705,7 +834,11 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 	// Determine which imports are needed
 	needsBytes := false
 	needsContext := false
-	needsTime := g.pkgPath != "" // time.ParseDuration used in retry override block
+	needsTime := false
+	needsSDK := g.pkgPath != "" && g.flagsCfg.Retries.Enabled
+	if needsSDK {
+		needsTime = true // time.ParseDuration used in retry override block
+	}
 	for _, op := range ops {
 		if op.RequestBody != nil {
 			needsBytes = true
@@ -754,7 +887,7 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 	}
 	sb.Line("")
 	sb.Line(`	"github.com/spf13/cobra"`)
-	if g.pkgPath != "" {
+	if needsSDK {
 		sb.Linef(`	"%s/internal/sdk"`, g.pkgPath)
 	}
 	sb.Line(")")

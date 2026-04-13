@@ -77,6 +77,12 @@ generation:
       retries:
         enabled: true                  # Controls --no-retries, --retry-max-attempts, --retry-max-elapsed
         hidden: false
+      template:
+        enabled: true                  # --template expression flag
+        hidden: false
+      templateFile:
+        enabled: true                  # --template-file path flag
+        hidden: false
   tui:
     enabled: false                      # Generate Bubbletea TUI
     outputDir: internal/tui
@@ -238,6 +244,8 @@ default value.
 | `noInteractive` | `--no-interactive` | bool | `false` |
 | `tui` | `--tui` | bool | `false` (only when `generation.tui.enabled: true`) |
 | `retries` | `--no-retries`, `--retry-max-attempts`, `--retry-max-elapsed` | — | — |
+| `template` | `--template` | string | `""` |
+| `templateFile` | `--template-file` | string | `""` |
 
 ### `enabled: false`
 
