@@ -33,6 +33,7 @@ These flags are available on every command:
 | `--output-format` | `-o` | `pretty` | Output format: `pretty`, `json`, `yaml`, `table` |
 | `--jq` | | `""` | Filter JSON output with a jq expression (gojq syntax) |
 | `--output-file` | | `""` | Write response body to a file instead of stdout |
+| `--include-headers` | | `false` | Print response headers alongside the body |
 | `--server` | | (from spec) | Override entire API server URL |
 | `--server-<varname>` | | (from spec) | Set a server URL template variable (see below) |
 | `--timeout` | | `30s` | Request timeout |
@@ -415,6 +416,72 @@ the generated binary — no external binary needed.
   ```json
   {"path":"report.pdf","bytes":204800,"contentType":"application/pdf"}
   ```
+
+## Response headers (`--include-headers`)
+
+The `--include-headers` flag includes the HTTP response headers in the output
+alongside the response body. It works with all output formats and can be
+combined with `--jq`, `--output-file`, and `--output-format`.
+
+### JSON / pretty / yaml output
+
+When the response body is valid JSON, the output is wrapped in an envelope
+object:
+
+```json
+{
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Request-Id": "abc-123",
+    "X-Ratelimit-Remaining": "99"
+  },
+  "body": { ... }
+}
+```
+
+The `headers` object uses the canonical HTTP header names as keys. Headers with
+multiple values are represented as a JSON array; single-value headers are a
+plain string.
+
+```bash
+# Inspect rate-limit headers alongside results
+./myapp pets list --include-headers
+
+# Extract just the headers with --jq
+./myapp pets list --include-headers --jq '.headers'
+
+# Extract a specific header value
+./myapp pets list --include-headers --jq '.headers["X-Ratelimit-Remaining"]'
+
+# Use with YAML output
+./myapp pets list --include-headers --output-format yaml
+```
+
+### Non-JSON responses
+
+When the response body cannot be parsed as JSON, headers are printed as
+`Name: Value` lines to stdout, followed by a blank line, then the raw body:
+
+```
+Content-Type: text/plain
+X-Request-Id: abc-123
+
+plain text response body here
+```
+
+### `--output-file` with `--include-headers`
+
+When `--output-file` is set, the response body is written to the file and
+headers are printed to stderr instead (one `Name: Value` line each, followed
+by a blank line):
+
+```bash
+./myapp reports export --id 42 --output-file report.pdf --include-headers
+# stderr: Content-Type: application/pdf
+# stderr: Content-Length: 204800
+# stderr: (blank line)
+# file:   report.pdf written with progress bar
+```
 
 ## Verbose output format
 

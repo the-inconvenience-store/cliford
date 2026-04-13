@@ -142,16 +142,17 @@ Every generated app includes:
 ### Global Flags
 
 ```
--o, --output-format   pretty|json|yaml|table (default: pretty)
-    --jq              Filter JSON output with a jq expression (no binary required)
-    --output-file     Write response body to a file with progress bar
-    --server          Override API server URL
-    --dry-run         Show HTTP request without executing
-    --debug           Log request/response to stderr (secrets redacted)
--y, --yes             Skip all confirmations
-    --tui             Launch full TUI mode
-    --agent           Force agent mode
-    --no-retries      Disable retries
+-o, --output-format    pretty|json|yaml|table (default: pretty)
+    --jq               Filter JSON output with a jq expression (no binary required)
+    --output-file      Write response body to a file with progress bar
+    --include-headers  Print response headers alongside the body
+    --server           Override API server URL
+    --dry-run          Show HTTP request without executing
+    --debug            Log request/response to stderr (secrets redacted)
+-y, --yes              Skip all confirmations
+    --tui              Launch full TUI mode
+    --agent            Force agent mode
+    --no-retries       Disable retries
 ```
 
 ## Documentation
