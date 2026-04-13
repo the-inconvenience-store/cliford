@@ -32,6 +32,7 @@ authentication, and more.
 - **Agent-aware** — auto-detects Claude Code, Cursor, Codex and switches to structured output
 - **jq filtering** — `--jq` flag filters JSON output via embedded gojq; no external binary required
 - **File downloads** — `--output-file` streams any response to disk with a live progress bar; adapts to agent mode
+- **Compact agent output** — `--output-format toon` uses [TOON](https://github.com/toon-format/toon-go) for ~60% token reduction; auto-selected in agent mode via `features.agentOutputFormat`
 
 ## Quick Start
 
@@ -142,7 +143,7 @@ Every generated app includes:
 ### Global Flags
 
 ```
--o, --output-format    pretty|json|yaml|table (default: pretty)
+-o, --output-format    pretty|json|yaml|table|toon (default: pretty)
     --jq               Filter JSON output with a jq expression (no binary required)
     --output-file      Write response body to a file with progress bar
     --include-headers  Print response headers alongside the body

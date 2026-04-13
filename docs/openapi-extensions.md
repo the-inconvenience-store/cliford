@@ -22,6 +22,7 @@ paths:
         confirm: false
         confirmMessage: ""
         defaultJQ: ".pets"
+        agentFormat: toon
 ```
 
 | Field | Type | Default | Description |
@@ -32,6 +33,7 @@ paths:
 | `confirm` | `bool` | `false` | Prompt for confirmation before executing |
 | `confirmMessage` | `string` | auto-generated | Custom confirmation text |
 | `defaultJQ` | `string` | `""` | Default jq expression applied to output; overridable with `--jq` |
+| `agentFormat` | `string` | `""` | Output format override when `--agent` is active (e.g. `toon`, `json`); overrides global `features.agentOutputFormat` |
 
 When `confirm` is `true` or the operation is a DELETE, the generated command
 displays a `[y/N]` prompt before sending the request. The `--yes` flag skips

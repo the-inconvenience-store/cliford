@@ -30,7 +30,7 @@ These flags are available on every command:
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--output-format` | `-o` | `pretty` | Output format: `pretty`, `json`, `yaml`, `table` |
+| `--output-format` | `-o` | `pretty` | Output format: `pretty`, `json`, `yaml`, `table`, `toon` |
 | `--jq` | | `""` | Filter JSON output with a jq expression (gojq syntax) |
 | `--output-file` | | `""` | Write response body to a file instead of stdout |
 | `--include-headers` | | `false` | Print response headers alongside the body |
@@ -309,9 +309,102 @@ The `--output-format` (or `-o`) flag controls how responses are displayed:
 | `json` | Indented JSON |
 | `yaml` | YAML |
 | `table` | ASCII table with column headers from response schema properties |
+| `toon` | TOON columnar format — token-efficient for AI agents (see below) |
 
 Table output uses sorted column headers and `text/tabwriter` alignment. For
 empty arrays, it prints "No results." instead of an empty table.
+
+## TOON output (`--output-format toon`)
+
+[TOON](https://github.com/toon-format/toon-go) (Token-Oriented Object Notation)
+is a compact columnar format that achieves roughly 60% token reduction compared
+to JSON. It declares field names once in a header row and then streams values —
+ideal for passing API responses to LLMs or AI coding agents.
+
+```bash
+# Explicit toon output
+./myapp pets list --output-format toon
+```
+
+Example output for an array response:
+
+```
+pets[3]{id,name,status}:
+  1,Fido,available
+  2,Rex,pending
+  3,Whiskers,available
+```
+
+Compare with equivalent JSON (much larger for the same data):
+
+```json
+[
+  {"id": 1, "name": "Fido", "status": "available"},
+  {"id": 2, "name": "Rex", "status": "pending"},
+  {"id": 3, "name": "Whiskers", "status": "available"}
+]
+```
+
+If toon encoding fails for a particular response shape, the output falls back
+to indented JSON without error.
+
+### Auto-selecting toon in agent mode
+
+Rather than requiring `--output-format toon` on every invocation, API designers
+can bake toon as the default format when `--agent` is active. This is configured
+at generation time and has no effect on normal interactive use.
+
+**Global default** — applies to all commands in the generated app:
+
+```yaml
+# cliford.yaml
+features:
+  agentOutputFormat: toon
+```
+
+**Per-operation override** — overrides the global for a specific command:
+
+```yaml
+# cliford.yaml
+operations:
+  listPets:
+    cli:
+      agentFormat: toon   # use toon in agent mode
+  getRawConfig:
+    cli:
+      agentFormat: json   # always use JSON for this op, even in agent mode
+```
+
+Or inline in the OpenAPI spec:
+
+```yaml
+paths:
+  /pets:
+    get:
+      x-cliford-cli:
+        agentFormat: toon
+```
+
+**Resolution order** (highest priority first):
+
+1. `--output-format <value>` passed explicitly at runtime — always wins
+2. Per-operation `agentFormat` (from `cliford.yaml` or `x-cliford-cli`)
+3. Global `features.agentOutputFormat` from `cliford.yaml`
+4. No agent format configured — `outputFormat` flag value used unchanged
+
+When an agent format is configured, the generated command emits this logic at
+runtime:
+
+```go
+if agentMode && --output-format was not explicitly set {
+    use configured agent format
+} else {
+    use --output-format value (default: "pretty")
+}
+```
+
+A user who explicitly passes `--output-format json` alongside `--agent` always
+gets JSON, regardless of the configured agent default.
 
 ## jq filtering
 

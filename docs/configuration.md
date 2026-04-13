@@ -87,6 +87,7 @@ features:
       - "⠏"
     intervalMs: 80                      # Milliseconds between frames
   customCodeRegions: false
+  agentOutputFormat: toon                # Default output format when --agent is active ("toon", "json", etc.)
   documentation:
     markdown: true
     llmsTxt: true
@@ -112,6 +113,7 @@ operations:
     cli:
       hidden: true                      # Hide from --help but still callable
       confirm: true
+      agentFormat: json                 # Override agent format for this operation
 
 # Hooks (see hooks.md)
 hooks:
@@ -132,6 +134,7 @@ hooks:
 | `confirm` | `bool` | Require confirmation before executing |
 | `confirmMessage` | `string` | Custom confirmation prompt text |
 | `defaultJQ` | `string` | Default jq expression applied to output; overridable with `--jq` at runtime |
+| `agentFormat` | `string` | Output format override when `--agent` is active (e.g. `toon`, `json`); overrides global `features.agentOutputFormat` |
 
 ### TUI overrides
 
