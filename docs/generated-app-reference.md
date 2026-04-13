@@ -31,6 +31,7 @@ These flags are available on every command:
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--output-format` | `-o` | `pretty` | Output format: `pretty`, `json`, `yaml`, `table` |
+| `--jq` | | `""` | Filter JSON output with a jq expression (gojq syntax) |
 | `--server` | | (from spec) | Override entire API server URL |
 | `--server-<varname>` | | (from spec) | Set a server URL template variable (see below) |
 | `--timeout` | | `30s` | Request timeout |
@@ -309,6 +310,62 @@ The `--output-format` (or `-o`) flag controls how responses are displayed:
 
 Table output uses sorted column headers and `text/tabwriter` alignment. For
 empty arrays, it prints "No results." instead of an empty table.
+
+## jq filtering
+
+The `--jq` flag pipes the JSON response through a
+[gojq](https://github.com/itchyny/gojq) expression before display. No
+external `jq` binary is required — gojq is embedded in the generated binary.
+
+```bash
+# Extract a nested field
+./myapp pets list --jq '.pets[] | .name'
+
+# Select a single item
+./myapp pets list --jq '.[0]'
+
+# Combine with --output-format
+./myapp pets list --jq '.pets' --output-format table
+
+# Count results
+./myapp pets list --jq '.pets | length'
+```
+
+The jq expression receives the parsed JSON response as input (i.e., a Go
+`any` value). The filter runs after any custom code regions, so post-response
+transformations in custom code are visible to the jq expression.
+
+When the expression produces a single value, that value is passed to the
+formatter. Multiple values are collected into a slice. A filter that matches
+nothing (e.g., `select(false)`) produces `null`.
+
+### Per-operation default jq
+
+API designers can bake a default jq expression into a command so it always
+shapes the response without requiring the user to specify `--jq`. The user
+can still override the default by passing `--jq` explicitly.
+
+Set via `cliford.yaml`:
+
+```yaml
+operations:
+  listPets:
+    cli:
+      defaultJQ: ".pets"
+```
+
+Or via the `x-cliford-cli` OpenAPI extension:
+
+```yaml
+paths:
+  /pets:
+    get:
+      x-cliford-cli:
+        defaultJQ: ".pets"
+```
+
+Cliford validates the expression at generation time and returns an error
+immediately if it cannot be parsed, rather than failing at runtime.
 
 ## Verbose output format
 

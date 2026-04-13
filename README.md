@@ -30,6 +30,7 @@ authentication, and more.
 - **Documentation** — auto-generated Markdown docs and LLM-optimized `llms.txt`
 - **Hooks** — lifecycle and transform hooks at every pipeline stage
 - **Agent-aware** — auto-detects Claude Code, Cursor, Codex and switches to structured output
+- **jq filtering** — `--jq` flag filters JSON output via embedded gojq; no external binary required
 
 ## Quick Start
 
@@ -141,6 +142,7 @@ Every generated app includes:
 
 ```
 -o, --output-format   pretty|json|yaml|table (default: pretty)
+    --jq              Filter JSON output with a jq expression (no binary required)
     --server          Override API server URL
     --dry-run         Show HTTP request without executing
     --debug           Log request/response to stderr (secrets redacted)
@@ -163,6 +165,7 @@ Every generated app includes:
 | [Distribution](docs/distribution.md)               | GoReleaser, Homebrew, install scripts, SemVer             |
 | [Hooks](docs/hooks.md)                             | Lifecycle and transform hooks                             |
 | [OpenAPI Extensions](docs/openapi-extensions.md)   | All `x-cliford-*` extensions reference                    |
+| [Generated App Reference](docs/generated-app-reference.md) | Global flags, output formats, jq filtering, file structure |
 
 ## Requirements
 

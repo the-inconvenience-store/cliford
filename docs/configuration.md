@@ -100,6 +100,7 @@ operations:
     cli:
       aliases: [ls, list]
       group: pets                       # Override tag-based grouping
+      defaultJQ: ".pets"               # Always apply this jq filter to output
     tui:
       displayAs: table
       refreshable: true
@@ -130,6 +131,7 @@ hooks:
 | `hidden` | `bool` | Hide from help output (still callable) |
 | `confirm` | `bool` | Require confirmation before executing |
 | `confirmMessage` | `string` | Custom confirmation prompt text |
+| `defaultJQ` | `string` | Default jq expression applied to output; overridable with `--jq` at runtime |
 
 ### TUI overrides
 

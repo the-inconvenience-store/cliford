@@ -21,6 +21,7 @@ paths:
         hidden: false
         confirm: false
         confirmMessage: ""
+        defaultJQ: ".pets"
 ```
 
 | Field | Type | Default | Description |
@@ -30,10 +31,17 @@ paths:
 | `hidden` | `bool` | `false` | Hide from help output |
 | `confirm` | `bool` | `false` | Prompt for confirmation before executing |
 | `confirmMessage` | `string` | auto-generated | Custom confirmation text |
+| `defaultJQ` | `string` | `""` | Default jq expression applied to output; overridable with `--jq` |
 
 When `confirm` is `true` or the operation is a DELETE, the generated command
 displays a `[y/N]` prompt before sending the request. The `--yes` flag skips
 the prompt.
+
+When `defaultJQ` is set, the generated command always applies the jq
+expression to its response — the user does not need to pass `--jq`. The user
+can still override it by passing `--jq` with a different expression. Cliford
+validates the expression at generation time and fails immediately if it cannot
+be parsed.
 
 ## x-cliford-tui
 
