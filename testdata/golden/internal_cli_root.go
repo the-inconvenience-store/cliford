@@ -4,6 +4,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/itchyny/gojq"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -19,6 +21,7 @@ import (
 var (
 	outputFormat  string
 	jqFilter      string
+	outputFile    string
 	serverURL     string
 	debugMode     bool
 	dryRunMode    bool
@@ -46,6 +49,7 @@ func RootCmd(appName string, version string) *cobra.Command {
 	pf := root.PersistentFlags()
 	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table")
 	pf.StringVar(&jqFilter, "jq", "", "Filter JSON output with a jq expression (gojq syntax)")
+	pf.StringVar(&outputFile, "output-file", "", "Write response body to a file instead of stdout")
 	pf.StringVar(&serverURL, "server", "", "Override API server URL")
 	pf.StringVar(&timeout, "timeout", "30s", "Request timeout")
 	pf.BoolVarP(&debugMode, "verbose", "v", false, "Log request/response to stderr (secrets redacted)")
@@ -170,6 +174,95 @@ func applyJQ(input any, expr string) (any, error) {
 	default:
 		return results, nil
 	}
+}
+
+// isTTYStderr reports whether stderr is connected to a terminal.
+func isTTYStderr() bool {
+	fi, _ := os.Stderr.Stat()
+	return fi != nil && (fi.Mode()&os.ModeCharDevice) != 0
+}
+
+// formatBytes formats a byte count as a human-readable string.
+func formatBytes(n int64) string {
+	const (
+		KB = 1024
+		MB = 1024 * KB
+		GB = 1024 * MB
+	)
+	switch {
+	case n >= GB:
+		return fmt.Sprintf("%.1f GB", float64(n)/GB)
+	case n >= MB:
+		return fmt.Sprintf("%.1f MB", float64(n)/MB)
+	case n >= KB:
+		return fmt.Sprintf("%.1f KB", float64(n)/KB)
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
+}
+
+// progressWriter wraps an io.Writer and calls onWrite after each write with the total bytes written.
+type progressWriter struct {
+	w       io.Writer
+	written int64
+	onWrite func(int64)
+}
+
+func (pw *progressWriter) Write(p []byte) (int, error) {
+	n, err := pw.w.Write(p)
+	pw.written += int64(n)
+	pw.onWrite(pw.written)
+	return n, err
+}
+
+// writeFileWithProgress streams body to path and shows download progress on stderr.
+// Progress display adapts to the execution context:
+//   - Interactive TTY: bubbles/progress bar (percentage or byte counter)
+//   - Headless/--no-interactive: silent write + summary to stderr
+//   - Agent (--agent or AI env): silent write + JSON {"path","bytes","contentType"} to stdout
+func writeFileWithProgress(body io.Reader, contentLength int64, contentType, path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", path, err)
+	}
+	defer f.Close()
+
+	isInteractive := !noInteractive && !agentMode && isTTYStderr()
+
+	if !isInteractive {
+		n, err := io.Copy(f, body)
+		if err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+		if agentMode {
+			fmt.Printf("{\"path\":%q,\"bytes\":%d,\"contentType\":%q}\n", path, n, contentType)
+		} else {
+			fmt.Fprintf(os.Stderr, "Wrote %s (%s)\n", path, formatBytes(n))
+		}
+		return nil
+	}
+
+	// Interactive TTY: use bubbles/progress for visual feedback
+	bar := progress.New(progress.WithDefaultGradient())
+	const clearWidth = 80
+	pw := &progressWriter{
+		w: f,
+		onWrite: func(written int64) {
+			if contentLength > 0 {
+				pct := float64(written) / float64(contentLength)
+				fmt.Fprintf(os.Stderr, "\r%s", bar.ViewAs(pct))
+			} else {
+				fmt.Fprintf(os.Stderr, "\r%s written", formatBytes(written))
+			}
+		},
+	}
+	n, err := io.Copy(pw, body)
+	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", clearWidth))
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	fmt.Fprintf(os.Stderr, "Wrote %s (%s)\n", path, formatBytes(n))
+	return nil
 }
 
 // SetAPIClient sets the shared HTTP client used by all generated commands.
