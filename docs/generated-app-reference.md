@@ -10,6 +10,10 @@ Every generated app includes these commands:
 ```
 <app>
   <tag> <operation>          # One command per OpenAPI operation, grouped by tag
+  alias
+    set <name> <expansion>   # Define or update an alias
+    delete <name>            # Remove an alias
+    list                     # List all aliases
   auth
     login                    # Store credentials interactively or via flags
     logout                   # Clear stored credentials
@@ -263,6 +267,7 @@ frames: ["·", "✻", "✽", "✶", "✳", "✢"]
     cli/
       root.go                      # Root command, global flags, FormatOutput, table renderer
       <tag>.go                     # One file per OpenAPI tag with operation commands
+      alias.go                     # Alias set/delete/list commands and ResolveAliases
       auth.go                      # Auth login/logout/status/switch commands
       config_cmd.go                # Config show/set/get commands
       generate_docs.go             # generate-docs subcommand (man, markdown)
@@ -467,6 +472,78 @@ paths:
 
 Cliford validates the expression at generation time and returns an error
 immediately if it cannot be parsed, rather than failing at runtime.
+
+## Aliases
+
+Generated apps include an `alias` command that lets users define short names
+for longer commands with default flags — the same pattern used by
+[gh CLI](https://cli.github.com/manual/gh_alias).
+
+Aliases are stored under the `aliases` key in `~/.config/<app>/config.yaml`
+and are expanded before Cobra parses the command tree, so they are fully
+transparent.
+
+### Managing aliases
+
+```bash
+# Define an alias
+./myapp alias set lp "pets list --limit 10"
+./myapp alias set new-cat "pets create --name Whiskers --species cat"
+
+# Use them
+./myapp lp
+./myapp lp --output-format yaml      # extra flags are appended after expansion
+./myapp new-cat
+
+# List all aliases
+./myapp alias list
+./myapp alias list -o json
+./myapp alias list -o yaml
+
+# Remove an alias
+./myapp alias delete lp
+```
+
+### Expansion rules
+
+When `./myapp <name> [extra-args...]` is invoked and `<name>` matches a
+configured alias:
+
+1. The alias expansion is tokenised with `strings.Fields` (whitespace-split).
+2. The token list replaces `<name>` in `os.Args`.
+3. Any extra user args are **appended after** the alias tokens.
+
+Appending user args after the expansion means that flags supplied at the
+command line override flags baked into the alias:
+
+```
+./myapp lp --limit 99
+→ ./myapp pets list --limit 10 --limit 99
+```
+
+Cobra uses the last value for a flag, so `--limit 99` wins.
+
+**Limitation:** `strings.Fields` splits on whitespace only. Quoted multi-word
+values inside an alias expansion (e.g., `--name "Foo Bar"`) are not
+supported — the quotes become part of the token. Use single-word flag values
+in alias expansions.
+
+### Config file format
+
+```yaml
+# ~/.config/myapp/config.yaml
+aliases:
+  lp: "pets list --limit 10"
+  new-cat: "pets create --name Whiskers --species cat"
+```
+
+Aliases are visible in `config show` output alongside all other config keys.
+
+### Alias shadowing
+
+Alias names can shadow real commands. If you define `alias set list "pets list"`,
+the `list` alias will match before any top-level `list` command. Avoid naming
+aliases the same as existing commands unless you intend to redirect them.
 
 ## Go template and JSONPath output
 

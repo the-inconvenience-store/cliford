@@ -382,6 +382,7 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	}
 	sb.Line("	root.AddCommand(authCmd())")
 	sb.Line("	root.AddCommand(configCmd())")
+	sb.Line("	root.AddCommand(aliasCmd())")
 	sb.Line("	root.AddCommand(GenerateDocsCmd())")
 
 	if g.customCodeRegions {

@@ -378,6 +378,7 @@ file is located at:
 | `features.hooks.enabled` | bool | `false` | Enable before/after request hooks |
 | `global_params.headers` | map | `{}` | Headers added to every request |
 | `global_params.query` | map | `{}` | Query parameters added to every request |
+| `aliases` | `map[string]string` | `{}` | User-defined command aliases (see [Generated App Reference](generated-app-reference.md#aliases)) |
 
 ### Server URL override
 

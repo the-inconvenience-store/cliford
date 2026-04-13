@@ -59,6 +59,7 @@ func RootCmd(appName string, version string) *cobra.Command {
 	root.AddCommand(usersCmd())
 	root.AddCommand(authCmd())
 	root.AddCommand(configCmd())
+	root.AddCommand(aliasCmd())
 	root.AddCommand(GenerateDocsCmd())
 
 	root.Long = root.Short + "\n\nAvailable servers:"

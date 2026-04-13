@@ -31,6 +31,7 @@ authentication, and more.
 - **Documentation** — auto-generated Markdown docs and LLM-optimized `llms.txt`
 - **Hooks** — lifecycle and transform hooks at every pipeline stage
 - **Agent-aware** — auto-detects Claude Code, Cursor, Codex and switches to structured output
+- **User aliases** — gh CLI-style shortcuts stored in config; `alias set lp "pets list --limit 10"`
 - **jq filtering** — `--jq` flag filters JSON output via embedded gojq; no external binary required
 - **Go template & JSONPath output** — `-o go-template` and `-o jsonpath` extract fields kubectl-style; no extra dependencies
 - **File downloads** — `--output-file` streams any response to disk with a live progress bar; adapts to agent mode

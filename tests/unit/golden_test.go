@@ -42,6 +42,7 @@ func TestGoldenFiles(t *testing.T) {
 	// Files to compare against golden copies
 	goldenFiles := []string{
 		"internal/cli/root.go",
+		"internal/cli/alias.go",
 	}
 
 	for _, relPath := range goldenFiles {

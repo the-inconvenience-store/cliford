@@ -388,6 +388,12 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 		return fmt.Errorf("generate config commands: %w", err)
 	}
 
+	// Generate alias commands and ResolveAliases helper
+	aliasGen := cli.NewAliasCmdGenerator(p.Config.OutputDir, p.Config.AppName)
+	if err := aliasGen.Generate(); err != nil {
+		return fmt.Errorf("generate alias commands: %w", err)
+	}
+
 	// Generate auth middleware and keychain
 	authEnhancer := sdk.NewAuthEnhancer(p.Config.OutputDir, p.Config.AppName, p.Config.EnvVarPrefix, p.Registry.SecuritySchemes)
 	if err := authEnhancer.Generate(); err != nil {
@@ -580,6 +586,7 @@ import (
 	"%s/internal/auth"
 	"%s/internal/cli"
 	"%s/internal/client"%s
+	"%s/internal/config"
 	"%s/internal/sdk"
 
 	"github.com/spf13/viper"
@@ -593,6 +600,12 @@ var (
 )
 
 func main() {
+	// Initialize configuration from ~/.config/<app>/config.yaml and env vars.
+	config.Init("%s", "%s")
+
+	// Expand any user-defined alias before Cobra parses the command tree.
+	os.Args = cli.ResolveAliases(os.Args)
+
 	// Create the shared HTTP client with auth and retry transport layers.
 	// This is the SDK-first architecture: all commands share a single,
 	// pre-configured client with 5-tier credential resolution:
@@ -636,7 +649,7 @@ func main() {
 		os.Exit(1)
 	}
 }
-`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, hooksImport, p.Config.PackageName, p.Config.AppName, p.Config.AppName, oauthBlock, hooksBlock, p.Config.AppName)
+`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, hooksImport, p.Config.PackageName, p.Config.PackageName, p.Config.AppName, p.Config.AppName, p.Config.EnvVarPrefix, p.Config.AppName, oauthBlock, hooksBlock, p.Config.AppName)
 
 	cmdDir := filepath.Join(p.Config.OutputDir, "cmd", p.Config.AppName)
 	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
