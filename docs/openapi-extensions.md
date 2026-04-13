@@ -183,6 +183,40 @@ paths:
 | `maxAttempts` | `int` | `3` | Max retry attempts |
 | `statusCodes` | `[]int` | `[408,429,500,502,503,504]` | HTTP codes that trigger retry |
 
+## x-cliford-wait
+
+Per-operation waiter configuration. Registers `--wait`, `--wait-for`, and
+`--wait-timeout` flags that block the command until a jq condition is true.
+
+The extension may be placed on any operation (not just GET — useful for POST
+operations that return async job objects).
+
+```yaml
+paths:
+  /instances/{id}:
+    get:
+      x-cliford-wait:
+        enabled: true
+        condition: '.state.name == "running"'
+        errorCondition: '.state.name == "terminated" or .state.name == "shutting-down"'
+        interval: "15s"
+        timeout: "10m"
+        message: "Waiting for instance to be running..."
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `*bool` | auto-detect | Explicitly enable or disable wait flags; omit to auto-detect from `condition` |
+| `condition` | `string` | `""` | jq success expression; presence auto-enables wait flags |
+| `errorCondition` | `string` | `""` | jq expression; immediate non-zero exit when true |
+| `interval` | `string` | `15s` | Polling interval (e.g. `"10s"`, `"1m"`) |
+| `timeout` | `string` | `""` | Max wait duration (e.g. `"10m"`); empty = no timeout |
+| `message` | `string` | `""` | Printed to stderr on each non-final iteration in wait-only mode |
+
+**Condition evaluation:** conditions are [jq](https://jqlang.github.io/jq/)
+expressions evaluated against the raw JSON response body (before any `--jq`
+filter). A boolean `true` result — or any non-nil, non-false value — is truthy.
+
 ## Precedence
 
 When both `cliford.yaml` and OpenAPI extensions define the same setting:

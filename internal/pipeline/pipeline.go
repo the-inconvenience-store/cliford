@@ -131,6 +131,15 @@ type Config struct {
 	// OperationWatchOverrides maps operation IDs to per-operation watch overrides.
 	// Applied in stageCLI after x-cliford-cli extensions; cliford.yaml takes priority.
 	OperationWatchOverrides map[string]OperationWatchOverride
+
+	// Wait feature config
+	WaitEnabled  bool   // features.wait.enabled
+	WaitInterval string // features.wait.defaultInterval (e.g. "15s")
+	WaitTimeout  string // features.wait.defaultTimeout ("" = no timeout)
+
+	// OperationWaitOverrides maps operation IDs to per-operation wait overrides.
+	// Applied in stageCLI after x-cliford-wait extensions; cliford.yaml takes priority.
+	OperationWaitOverrides map[string]OperationWaitOverride
 }
 
 // OperationWatchOverride holds per-operation watch configuration from cliford.yaml.
@@ -138,6 +147,16 @@ type OperationWatchOverride struct {
 	Enabled  *bool
 	Interval string
 	MaxCount int
+}
+
+// OperationWaitOverride holds per-operation wait configuration from cliford.yaml.
+type OperationWaitOverride struct {
+	Enabled        *bool
+	Condition      string
+	ErrorCondition string
+	Interval       string
+	Timeout        string
+	Message        string
 }
 
 // RuntimeHookDef describes a hook baked into the generated app at generation time.
@@ -384,6 +403,36 @@ func stageCLI(ctx context.Context, p *Pipeline) error {
 			}
 			if override.MaxCount > 0 {
 				op.CLIWatchMaxCount = override.MaxCount
+			}
+		}
+	}
+
+	// Apply wait feature config.
+	if p.Config.WaitEnabled {
+		cliGen.SetWaitConfig(true, p.Config.WaitInterval, p.Config.WaitTimeout)
+	}
+
+	// Apply per-op wait overrides from cliford.yaml (highest priority; overwrites x-cliford-wait).
+	for i := range p.Registry.Operations {
+		op := &p.Registry.Operations[i]
+		if override, ok := p.Config.OperationWaitOverrides[op.OperationID]; ok {
+			if override.Enabled != nil {
+				op.CLIWaitEnabled = override.Enabled
+			}
+			if override.Condition != "" {
+				op.CLIWaitCondition = override.Condition
+			}
+			if override.ErrorCondition != "" {
+				op.CLIWaitErrorCondition = override.ErrorCondition
+			}
+			if override.Interval != "" {
+				op.CLIWaitInterval = override.Interval
+			}
+			if override.Timeout != "" {
+				op.CLIWaitTimeout = override.Timeout
+			}
+			if override.Message != "" {
+				op.CLIWaitMessage = override.Message
 			}
 		}
 	}

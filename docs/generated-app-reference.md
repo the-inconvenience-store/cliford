@@ -644,6 +644,108 @@ looped:
 Watch mode is enabled globally and the defaults are configurable in
 `cliford.yaml`. See [Configuration](configuration.md#watch-mode) for details.
 
+## Wait mode
+
+Operations that expose a `x-cliford-wait` extension (or have a `waitCondition`
+set in `cliford.yaml`) register `--wait`, `--wait-for`, and `--wait-timeout`
+flags. These flags block the command until a
+[jq](https://jqlang.github.io/jq/) condition is true — the same pattern as
+`aws ec2 wait instance-running`.
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--wait` | `false` | Block until the baked-in condition is met |
+| `--wait-for` | `""` | Custom jq expression to wait for; setting this without `--wait` also enables wait mode |
+| `--wait-timeout` | spec default | Max time to wait (e.g. `5m`, `1h`); empty = no timeout |
+
+### Usage examples
+
+```bash
+# Block until .state.name == "running" (condition baked in from spec)
+./myapp instances get --id i-123 --wait
+
+# Override condition at runtime
+./myapp instances get --id i-123 --wait --wait-for '.health == "healthy"'
+
+# --wait-for alone implies --wait
+./myapp instances get --id i-123 --wait-for '.ready == true'
+
+# Override timeout
+./myapp instances get --id i-123 --wait --wait-timeout 5m
+
+# Compose: watch output while waiting for a condition
+./myapp instances get --id i-123 --watch --wait
+```
+
+### Wait-only mode
+
+Without `--watch`, intermediate responses are suppressed. If the spec provides
+a `message`, it is printed to stderr on each non-final iteration:
+
+```
+Waiting for instance to be running...
+Waiting for instance to be running...
+[...final response printed when condition met...]
+```
+
+The final response is printed normally (subject to `--output-format`, `--jq`,
+etc.) once the condition is satisfied.
+
+### Watch + wait mode
+
+With both `--watch` and `--wait`, the output is shown on every iteration (watch
+behavior) and the loop stops automatically when the condition is met.
+
+### Error condition
+
+Specs may define an `errorCondition` jq expression. If it evaluates to true at
+any iteration, the command exits non-zero immediately without waiting for the
+next interval:
+
+```
+error: wait: error condition met: .state.name == "terminated"
+```
+
+### Timeout behavior
+
+When `--wait-timeout` is set (or baked in from the spec), the command exits
+with an error after the deadline is exceeded:
+
+```
+error: wait: timed out after 5m
+```
+
+Exit code is non-zero. Use `--wait-timeout ""` to disable a baked-in timeout.
+
+### Exit codes
+
+| Outcome | Exit code |
+|---------|-----------|
+| Condition met | `0` |
+| Timeout exceeded | non-zero |
+| Error condition met | non-zero |
+| `--wait` with no condition configured and no `--wait-for` | non-zero |
+
+### Error handling
+
+Network errors and HTTP errors during a wait session are printed to stderr and
+the loop continues. Transient errors do not abort the wait:
+
+```
+error: HTTP 503: service temporarily unavailable
+```
+
+### Dry-run interaction
+
+`--dry-run --wait` shows the HTTP request once and exits without looping.
+
+### Configuration
+
+Wait mode defaults are configurable in `cliford.yaml`. See
+[Configuration](configuration.md#wait-mode) for details.
+
 ## Go template and JSONPath output
 
 Two additional output formats let you extract and format specific fields from

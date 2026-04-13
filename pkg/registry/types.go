@@ -36,6 +36,12 @@ type OperationMeta struct {
 	CLIWatchEnabled        *bool  // nil = inherit global; set by x-cliford-cli.watch.enabled or cliford.yaml
 	CLIWatchInterval       string // Per-op poll interval override (empty = use global default, e.g. "2s")
 	CLIWatchMaxCount       int    // Per-op max watch iterations (0 = use global default)
+	CLIWaitEnabled        *bool  // nil = auto-detect from CLIWaitCondition; set by x-cliford-wait or cliford.yaml
+	CLIWaitCondition      string // jq success expression (required when --wait used without --wait-for)
+	CLIWaitErrorCondition string // jq expression; exits non-zero immediately if true
+	CLIWaitInterval       string // per-op polling interval (empty = use global default)
+	CLIWaitTimeout        string // per-op max wait duration (empty = use global default)
+	CLIWaitMessage        string // message printed to stderr each non-final iteration in wait-only mode
 
 	// TUI-specific (from config/extensions)
 	TUIDisplay     DisplayMode

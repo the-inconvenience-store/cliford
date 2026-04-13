@@ -166,6 +166,9 @@ func generateCmd() *cobra.Command {
 				cfg.WatchEnabled = fileCfg.Features.Watch.Enabled
 				cfg.WatchInterval = fileCfg.Features.Watch.DefaultInterval
 				cfg.WatchMaxCount = fileCfg.Features.Watch.MaxCount
+				cfg.WaitEnabled = fileCfg.Features.Wait.Enabled
+				cfg.WaitInterval = fileCfg.Features.Wait.DefaultInterval
+				cfg.WaitTimeout = fileCfg.Features.Wait.DefaultTimeout
 
 				for id, opOverride := range fileCfg.Operations {
 					if opOverride.CLI.DefaultJQ != "" {
@@ -202,6 +205,21 @@ func generateCmd() *cobra.Command {
 							MaxCount: opOverride.CLI.WatchMaxCount,
 						}
 					}
+					cli := opOverride.CLI
+					if cli.WaitEnabled != nil || cli.WaitCondition != "" || cli.WaitErrorCondition != "" ||
+						cli.WaitInterval != "" || cli.WaitTimeout != "" || cli.WaitMessage != "" {
+						if cfg.OperationWaitOverrides == nil {
+							cfg.OperationWaitOverrides = make(map[string]pipeline.OperationWaitOverride)
+						}
+						cfg.OperationWaitOverrides[id] = pipeline.OperationWaitOverride{
+							Enabled:        cli.WaitEnabled,
+							Condition:      cli.WaitCondition,
+							ErrorCondition: cli.WaitErrorCondition,
+							Interval:       cli.WaitInterval,
+							Timeout:        cli.WaitTimeout,
+							Message:        cli.WaitMessage,
+						}
+					}
 				}
 				for _, gp := range fileCfg.GlobalParams {
 					if gp.Generate == "" {
@@ -222,6 +240,8 @@ func generateCmd() *cobra.Command {
 				cfg.CLIFlags = config.DefaultFlagsConfig()
 				cfg.WatchEnabled = true
 				cfg.WatchInterval = "5s"
+				cfg.WaitEnabled = true
+				cfg.WaitInterval = "15s"
 			}
 
 			p := pipeline.New(cfg)

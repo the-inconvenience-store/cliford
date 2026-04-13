@@ -93,6 +93,9 @@ type CLIFlagsConfig struct {
 	Watch        CLIFlagConfig `mapstructure:"watch"`        // --watch bool flag (GET ops only)
 	PollInterval CLIFlagConfig `mapstructure:"pollInterval"` // --poll-interval duration flag (GET ops only)
 	WatchCount   CLIFlagConfig `mapstructure:"watchCount"`   // --watch-count int flag (GET ops only)
+	Wait        CLIFlagConfig `mapstructure:"wait"`        // --wait bool flag (wait-enabled ops)
+	WaitFor     CLIFlagConfig `mapstructure:"waitFor"`     // --wait-for string flag (wait-enabled ops)
+	WaitTimeout CLIFlagConfig `mapstructure:"waitTimeout"` // --wait-timeout string flag (wait-enabled ops)
 }
 
 // DefaultFlagsConfig returns a CLIFlagsConfig with all flags enabled and
@@ -118,6 +121,9 @@ func DefaultFlagsConfig() CLIFlagsConfig {
 		Watch:        CLIFlagConfig{Enabled: true},
 		PollInterval: CLIFlagConfig{Enabled: true, Default: "5s"},
 		WatchCount:   CLIFlagConfig{Enabled: true},
+		Wait:        CLIFlagConfig{Enabled: true},
+		WaitFor:     CLIFlagConfig{Enabled: true},
+		WaitTimeout: CLIFlagConfig{Enabled: true},
 	}
 }
 
@@ -154,6 +160,13 @@ type WatchFeaturesConfig struct {
 	MaxCount        int    `mapstructure:"maxCount"`        // 0 = infinite
 }
 
+// WaitFeaturesConfig controls the waiter feature globally.
+type WaitFeaturesConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	DefaultInterval string `mapstructure:"defaultInterval"` // e.g. "15s"
+	DefaultTimeout  string `mapstructure:"defaultTimeout"`  // "" = no timeout
+}
+
 // FeaturesConfig controls optional feature generation.
 type FeaturesConfig struct {
 	Pagination        bool               `mapstructure:"pagination"`
@@ -166,6 +179,7 @@ type FeaturesConfig struct {
 	AgentOutputFormat string             `mapstructure:"agentOutputFormat"` // Default output format when --agent is active (e.g. "toon")
 	RequestID         RequestIDConfig    `mapstructure:"requestId"`
 	Watch             WatchFeaturesConfig `mapstructure:"watch"`
+	Wait              WaitFeaturesConfig  `mapstructure:"wait"`
 }
 
 // SpinnerConfig controls the loading animation displayed during HTTP requests.
@@ -217,6 +231,12 @@ type OperationCLIOverride struct {
 	WatchEnabled        *bool    `mapstructure:"watchEnabled"`         // nil = inherit global; true/false overrides for this operation
 	WatchInterval       string   `mapstructure:"watchInterval"`        // Per-op poll interval override (e.g. "2s")
 	WatchMaxCount       int      `mapstructure:"watchMaxCount"`        // Per-op max watch iterations (0 = use global default)
+	WaitEnabled        *bool  `mapstructure:"waitEnabled"`
+	WaitCondition      string `mapstructure:"waitCondition"`
+	WaitErrorCondition string `mapstructure:"waitErrorCondition"`
+	WaitInterval       string `mapstructure:"waitInterval"`
+	WaitTimeout        string `mapstructure:"waitTimeout"`
+	WaitMessage        string `mapstructure:"waitMessage"`
 }
 
 // OperationTUIOverride holds TUI-specific per-operation config.
@@ -322,6 +342,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("features.watch.enabled", true)
 	v.SetDefault("features.watch.defaultInterval", "5s")
 	v.SetDefault("features.watch.maxCount", 0)
+	v.SetDefault("generation.cli.flags.wait.enabled", true)
+	v.SetDefault("generation.cli.flags.waitFor.enabled", true)
+	v.SetDefault("generation.cli.flags.waitTimeout.enabled", true)
+	v.SetDefault("features.wait.enabled", true)
+	v.SetDefault("features.wait.defaultInterval", "15s")
+	v.SetDefault("features.wait.defaultTimeout", "")
 	v.SetDefault("generation.tui.enabled", false)
 	v.SetDefault("generation.tui.outputDir", "internal/tui")
 	v.SetDefault("auth.interactive", true)

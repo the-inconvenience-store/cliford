@@ -32,6 +32,7 @@ authentication, and more.
 - **Hooks** — lifecycle and transform hooks at every pipeline stage
 - **Agent-aware** — auto-detects Claude Code, Cursor, Codex and switches to structured output
 - **Watch/poll mode** — `--watch` re-runs GET commands on a timer; `--poll-interval 2s` sets the interval; TTY-aware screen clearing like `watch(1)`
+- **Waiters** — `--wait` blocks until a jq condition is true (`aws ec2 wait`-style); `--wait-for` overrides at runtime; configurable via `x-cliford-wait` in the spec
 - **User aliases** — gh CLI-style shortcuts stored in config; `alias set lp "pets list --limit 10"`
 - **jq filtering** — `--jq` flag filters JSON output via embedded gojq; no external binary required
 - **Go template & JSONPath output** — `-o go-template` and `-o jsonpath` extract fields kubectl-style; no extra dependencies

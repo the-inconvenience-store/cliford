@@ -63,6 +63,16 @@ type RetryExtension struct {
 	StatusCodes []int `json:"statusCodes"`
 }
 
+// WaitExtension holds x-cliford-wait data from an operation.
+type WaitExtension struct {
+	Enabled        *bool  `json:"enabled"`
+	Condition      string `json:"condition"`
+	ErrorCondition string `json:"errorCondition"`
+	Interval       string `json:"interval"`
+	Timeout        string `json:"timeout"`
+	Message        string `json:"message"`
+}
+
 // ExtractExtensions reads x-cliford-* extensions from an OpenAPI operation
 // and applies them to the OperationMeta.
 func ExtractExtensions(op *openapi3.Operation, meta *registry.OperationMeta) {
@@ -138,6 +148,32 @@ func ExtractExtensions(op *openapi3.Operation, meta *registry.OperationMeta) {
 		if data, err := marshalRaw(raw); err == nil {
 			if err := json.Unmarshal(data, &ext); err == nil {
 				meta.Retries = convertRetryExt(ext)
+			}
+		}
+	}
+
+	if raw, ok := op.Extensions["x-cliford-wait"]; ok {
+		var ext WaitExtension
+		if data, err := marshalRaw(raw); err == nil {
+			if err := json.Unmarshal(data, &ext); err == nil {
+				if ext.Enabled != nil {
+					meta.CLIWaitEnabled = ext.Enabled
+				}
+				if ext.Condition != "" {
+					meta.CLIWaitCondition = ext.Condition
+				}
+				if ext.ErrorCondition != "" {
+					meta.CLIWaitErrorCondition = ext.ErrorCondition
+				}
+				if ext.Interval != "" {
+					meta.CLIWaitInterval = ext.Interval
+				}
+				if ext.Timeout != "" {
+					meta.CLIWaitTimeout = ext.Timeout
+				}
+				if ext.Message != "" {
+					meta.CLIWaitMessage = ext.Message
+				}
 			}
 		}
 	}

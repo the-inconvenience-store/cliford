@@ -93,6 +93,15 @@ generation:
       watchCount:
         enabled: true                  # --watch-count flag on GET operations
         hidden: false
+      wait:
+        enabled: true                  # --wait flag on wait-enabled operations
+        hidden: false
+      waitFor:
+        enabled: true                  # --wait-for flag on wait-enabled operations
+        hidden: false
+      waitTimeout:
+        enabled: true                  # --wait-timeout flag on wait-enabled operations
+        hidden: false
   tui:
     enabled: false                      # Generate Bubbletea TUI
     outputDir: internal/tui
@@ -153,6 +162,10 @@ features:
     enabled: true                        # Add --watch/--poll-interval/--watch-count to GET operations
     defaultInterval: "5s"               # Default --poll-interval value
     maxCount: 0                          # Default --watch-count value (0 = infinite)
+  wait:
+    enabled: true                        # Master gate for --wait/--wait-for/--wait-timeout flags
+    defaultInterval: "15s"              # Default polling interval (used when no per-op interval set)
+    defaultTimeout: ""                  # Default timeout ("" = no timeout)
   documentation:
     markdown: true
     llmsTxt: true
@@ -184,6 +197,14 @@ operations:
       watchEnabled: true                # Opt in/out of watch flags (nil = inherit features.watch.enabled)
       watchInterval: "10s"             # Per-op --poll-interval default
       watchMaxCount: 30                 # Per-op --watch-count default
+  getInstance:
+    cli:
+      waitEnabled: true                          # nil = auto-detect from waitCondition
+      waitCondition: '.state.name == "running"'  # jq success expression
+      waitErrorCondition: '.state.name == "terminated"'
+      waitInterval: "10s"                        # Per-op polling interval
+      waitTimeout: "5m"                          # Per-op max wait duration
+      waitMessage: "Waiting for instance..."     # Printed to stderr each non-final iteration
 
 # OAI overlay files applied before generation (see overlays.md)
 overlays:
@@ -234,6 +255,12 @@ See [Overlays](overlays.md) for the full reference.
 | `watchEnabled` | `*bool` | Enable or disable watch flags for this GET operation; `null` (omitted) inherits `features.watch.enabled` |
 | `watchInterval` | `string` | Per-operation default `--poll-interval` value (e.g. `"10s"`); overrides global `features.watch.defaultInterval` |
 | `watchMaxCount` | `int` | Per-operation default `--watch-count` value; overrides global `features.watch.maxCount` |
+| `waitEnabled` | `*bool` | Explicitly enable or disable wait flags; `null` (omitted) auto-detects from `waitCondition` |
+| `waitCondition` | `string` | jq success expression (e.g. `'.state == "running"'`); auto-enables wait flags when non-empty |
+| `waitErrorCondition` | `string` | jq expression that causes immediate non-zero exit when true (e.g. `'.state == "terminated"'`) |
+| `waitInterval` | `string` | Per-operation polling interval (e.g. `"10s"`); overrides `features.wait.defaultInterval` |
+| `waitTimeout` | `string` | Per-operation max wait duration (e.g. `"5m"`); overrides `features.wait.defaultTimeout` |
+| `waitMessage` | `string` | Message printed to stderr on each non-final iteration in wait-only mode |
 
 ### TUI overrides
 
@@ -269,6 +296,9 @@ default value.
 | `watch` | `--watch` | bool | `false` (GET ops only) |
 | `pollInterval` | `--poll-interval` | string | `5s` (GET ops only) |
 | `watchCount` | `--watch-count` | int | `0` (GET ops only) |
+| `wait` | `--wait` | bool | `false` (wait-enabled ops only) |
+| `waitFor` | `--wait-for` | string | `""` (wait-enabled ops only) |
+| `waitTimeout` | `--wait-timeout` | string | spec default (wait-enabled ops only) |
 | `template` | `--template` | string | `""` |
 | `templateFile` | `--template-file` | string | `""` |
 
@@ -414,6 +444,82 @@ generation:
 | `--poll-interval` alone | Enables watch mode implicitly |
 
 See [Watch mode](generated-app-reference.md#watch-mode) in the Generated App
+Reference for usage examples.
+
+## Wait mode
+
+Wait mode adds `--wait`, `--wait-for`, and `--wait-timeout` flags to operations
+that have a `x-cliford-wait` extension in the spec or a `waitCondition` set in
+`cliford.yaml`. The command polls the endpoint until a jq condition is true.
+
+```yaml
+features:
+  wait:
+    enabled: true           # master feature gate (default: true)
+    defaultInterval: "15s"  # default polling interval when no per-op interval is set
+    defaultTimeout: ""      # default timeout ("" = no timeout)
+```
+
+**Per-operation overrides:**
+
+```yaml
+operations:
+  getInstance:
+    cli:
+      waitEnabled: true                          # explicit enable (nil = auto-detect from condition)
+      waitCondition: '.state.name == "running"'  # jq success expression
+      waitErrorCondition: '.state.name == "terminated"'
+      waitInterval: "10s"                        # per-op polling interval
+      waitTimeout: "5m"                          # per-op max wait duration
+      waitMessage: "Waiting for instance..."     # message printed to stderr each non-final iteration
+```
+
+**Flag defaults** (in `generation.cli.flags`):
+
+```yaml
+generation:
+  cli:
+    flags:
+      wait:
+        enabled: true
+        hidden: false
+      waitFor:
+        enabled: true
+        hidden: false
+      waitTimeout:
+        enabled: true
+        hidden: false
+```
+
+**`waitEnabled` auto-detection:**
+
+If `waitEnabled` is not set explicitly, it is inferred: the wait flags are
+registered when `waitCondition` is non-empty AND `features.wait.enabled` is
+`true`. Set `waitEnabled: false` to suppress the flags even when a condition
+is configured.
+
+**Priority chain (highest to lowest):**
+
+1. Runtime `--wait-for` / `--wait-timeout` flags
+2. `x-cliford-wait.*` extension in the OpenAPI spec
+3. `operations.<id>.cli.wait*` in `cliford.yaml`
+4. `features.wait.defaultInterval` / `features.wait.defaultTimeout`
+5. Built-in: interval = `15s`, timeout = `""` (none)
+
+**Behavior summary:**
+
+| Scenario | Result |
+|----------|--------|
+| `--wait` | Suppresses intermediate output; prints final response |
+| `--wait` + spec `message` | Message printed to stderr each non-final iteration |
+| `--watch --wait` | Output shown every iteration; loop stops when condition met |
+| `--dry-run --wait` | Shows request once, exits |
+| HTTP error in wait mode | Printed to stderr; loop continues |
+| Error condition met | Exits immediately with non-zero status |
+| Timeout exceeded | Exits with `"wait: timed out after <duration>"` error |
+| `--wait` with no condition | Exits with error (no condition configured) |
+
+See [Wait mode](generated-app-reference.md#wait-mode) in the Generated App
 Reference for usage examples.
 
 ## Stutter removal
