@@ -19,17 +19,18 @@ import (
 )
 
 var (
-	outputFormat  string
-	jqFilter      string
-	outputFile    string
-	serverURL     string
-	debugMode     bool
-	dryRunMode    bool
-	yesMode       bool
-	agentMode     bool
-	noInteractive bool
-	tuiMode       bool
-	timeout       string
+	outputFormat   string
+	jqFilter       string
+	outputFile     string
+	includeHeaders bool
+	serverURL      string
+	debugMode      bool
+	dryRunMode     bool
+	yesMode        bool
+	agentMode      bool
+	noInteractive  bool
+	tuiMode        bool
+	timeout        string
 
 	// apiClient is the shared HTTP client with auth, retry, and verbose transports.
 	// Set via SetAPIClient() from main.go; falls back to a default client if nil.
@@ -50,6 +51,7 @@ func RootCmd(appName string, version string) *cobra.Command {
 	pf.StringVarP(&outputFormat, "output-format", "o", "pretty", "Output format: pretty, json, yaml, table")
 	pf.StringVar(&jqFilter, "jq", "", "Filter JSON output with a jq expression (gojq syntax)")
 	pf.StringVar(&outputFile, "output-file", "", "Write response body to a file instead of stdout")
+	pf.BoolVar(&includeHeaders, "include-headers", false, "Print response headers alongside the body")
 	pf.StringVar(&serverURL, "server", "", "Override API server URL")
 	pf.StringVar(&timeout, "timeout", "30s", "Request timeout")
 	pf.BoolVarP(&debugMode, "verbose", "v", false, "Log request/response to stderr (secrets redacted)")
