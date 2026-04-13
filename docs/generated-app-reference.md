@@ -32,6 +32,7 @@ These flags are available on every command:
 |------|-------|---------|-------------|
 | `--output-format` | `-o` | `pretty` | Output format: `pretty`, `json`, `yaml`, `table` |
 | `--jq` | | `""` | Filter JSON output with a jq expression (gojq syntax) |
+| `--output-file` | | `""` | Write response body to a file instead of stdout |
 | `--server` | | (from spec) | Override entire API server URL |
 | `--server-<varname>` | | (from spec) | Set a server URL template variable (see below) |
 | `--timeout` | | `30s` | Request timeout |
@@ -366,6 +367,54 @@ paths:
 
 Cliford validates the expression at generation time and returns an error
 immediately if it cannot be parsed, rather than failing at runtime.
+
+## File downloads (`--output-file`)
+
+The `--output-file <path>` flag writes the raw response body directly to a
+file instead of printing to stdout. It works for any response — binary
+(PDFs, images, archives) or JSON — and shows a progress indicator during
+the download. No external tools are required.
+
+```bash
+# Download a PDF report
+./myapp reports export --id 42 --output-file report.pdf
+
+# Save a ZIP archive
+./myapp backups download --output-file backup.zip
+
+# Save a JSON response to disk for offline inspection
+./myapp pets list --output-file pets.json
+```
+
+### Progress display
+
+The progress indicator adapts to the execution context:
+
+| Context | Behaviour |
+|---------|-----------|
+| Interactive TTY | Animated progress bar on stderr (percentage when server sends `Content-Length`, byte counter otherwise) |
+| `--no-interactive` or piped | Silent download; `"Wrote <path> (<size>)"` printed to stderr on completion |
+| `--agent` or AI environment | Silent download; `{"path":"…","bytes":N,"contentType":"…"}` JSON printed to stdout on completion |
+
+The progress bar uses `charmbracelet/bubbles/progress`, already embedded in
+the generated binary — no external binary needed.
+
+### Behaviour notes
+
+- The spinner that normally shows during the connect phase still runs; the
+  progress bar takes over once response headers are received and the body
+  starts streaming.
+- Error responses (HTTP 4xx/5xx) are still reported as errors; the file is
+  not created.
+- `--output-file` can be combined with `--verbose` to log request/response
+  headers while downloading. When verbose is active the entire body is
+  buffered in memory before writing; for very large files prefer omitting
+  `--verbose`.
+- Agent-mode JSON output gives AI callers structured metadata for further
+  processing:
+  ```json
+  {"path":"report.pdf","bytes":204800,"contentType":"application/pdf"}
+  ```
 
 ## Verbose output format
 

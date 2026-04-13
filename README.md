@@ -31,6 +31,7 @@ authentication, and more.
 - **Hooks** — lifecycle and transform hooks at every pipeline stage
 - **Agent-aware** — auto-detects Claude Code, Cursor, Codex and switches to structured output
 - **jq filtering** — `--jq` flag filters JSON output via embedded gojq; no external binary required
+- **File downloads** — `--output-file` streams any response to disk with a live progress bar; adapts to agent mode
 
 ## Quick Start
 
@@ -143,6 +144,7 @@ Every generated app includes:
 ```
 -o, --output-format   pretty|json|yaml|table (default: pretty)
     --jq              Filter JSON output with a jq expression (no binary required)
+    --output-file     Write response body to a file with progress bar
     --server          Override API server URL
     --dry-run         Show HTTP request without executing
     --debug           Log request/response to stderr (secrets redacted)
