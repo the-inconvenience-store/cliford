@@ -115,12 +115,36 @@ operations:
       confirm: true
       agentFormat: json                 # Override agent format for this operation
 
+# OAI overlay files applied before generation (see overlays.md)
+overlays:
+  - cliford.overlay.yaml
+  - overlays/my-extensions.yaml
+
 # Hooks (see hooks.md)
 hooks:
   "after:generate":
     - run: "gofmt -w ."
     - run: "go vet ./..."
 ```
+
+## Overlays
+
+The `overlays` key lists [OAI Overlay Specification](https://github.com/OAI/Overlay-Specification)
+files to apply to the spec before generation. Overlays let you add
+`x-cliford-*` extensions, remove internal paths, or patch any field — without
+touching the original spec file. This is particularly useful when the spec is
+owned by a third party or is machine-generated and re-synced regularly.
+
+```yaml
+overlays:
+  - cliford.overlay.yaml          # committed alongside cliford.yaml
+  - overlays/local.yaml           # developer-only, gitignored
+```
+
+Overlays are applied in listed order. All downstream stages — spec validation,
+SDK generation, and CLI generation — see the merged result.
+
+See [Overlays](overlays.md) for the full reference.
 
 ## Per-operation overrides
 

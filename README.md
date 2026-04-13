@@ -19,6 +19,7 @@ authentication, and more.
 ## Features
 
 - **OpenAPI-driven** — every command, flag, and parameter derived from your spec
+- **Overlay support** — patch any spec with [OAI Overlay](https://github.com/OAI/Overlay-Specification) files; add `x-cliford-*` extensions to specs you don't own without modifying them
 - **SDK-first** — generates a typed Go SDK via oapi-codegen, then builds CLI/TUI on top
 - **Three modes** — pure CLI, full Bubbletea TUI, or hybrid (CLI + inline prompts)
 - **Authentication** — API key, bearer, basic, OAuth 2.0 with OS keychain storage
@@ -106,6 +107,10 @@ theme:
     accent: "#4ECDC4"
   borders: rounded
 
+# Overlay files patch the spec before generation (no modifications to the original)
+overlays:
+  - cliford.overlay.yaml
+
 operations:
   listPets:
     cli:
@@ -126,6 +131,9 @@ operations:
 | `cliford diff`           | Preview what regeneration would change             |
 | `cliford version <type>` | Bump SemVer (auto/patch/minor/major)               |
 | `cliford doctor`         | Check environment and dependencies                 |
+
+Both `cliford generate` and `cliford validate` accept `--overlay <path>`
+(repeatable) to apply overlay files ad-hoc without editing `cliford.yaml`.
 
 ## Generated App Commands
 
@@ -162,6 +170,7 @@ Every generated app includes:
 | -------------------------------------------------- | --------------------------------------------------------- |
 | [Getting Started](docs/getting-started.md)         | Install, generate, and run your first app                 |
 | [Configuration](docs/configuration.md)             | cliford.yaml, OpenAPI extensions, per-operation overrides |
+| [Overlays](docs/overlays.md)                       | Patch third-party specs with OAI Overlay files            |
 | [Authentication](docs/authentication.md)           | Auth methods, keychain storage, profiles                  |
 | [TUI Mode](docs/tui-mode.md)                       | Bubbletea TUI, theming, hybrid mode, mode detection       |
 | [Pagination & Retries](docs/pagination-retries.md) | Auto-pagination, retry strategies, error handling         |
