@@ -66,6 +66,7 @@ type ParamMeta struct {
 	Default     any
 	Enum        []any
 	FlagName    string // Derived kebab-case CLI flag name
+	Example     string // Pre-formatted example value; empty if none in spec
 }
 
 // ParamLocation indicates where a parameter is sent.
@@ -97,6 +98,7 @@ type RequestBodyMeta struct {
 	Schema      SchemaMeta
 	Required    bool
 	Description string
+	Example     string // Pre-formatted example value; empty if none in spec
 }
 
 // ResponseMeta describes a single response for an operation.

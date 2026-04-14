@@ -4,6 +4,7 @@ package openapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -238,20 +239,60 @@ func parseParameter(p *openapi3.Parameter) registry.ParamMeta {
 		}
 	}
 
+	// Extract example: parameter-level first, then named examples, then schema-level.
+	switch {
+	case p.Example != nil:
+		pm.Example = exampleToString(p.Example)
+	case len(p.Examples) > 0:
+		keys := make([]string, 0, len(p.Examples))
+		for k := range p.Examples {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		if ref := p.Examples[keys[0]]; ref != nil && ref.Value != nil {
+			pm.Example = exampleToString(ref.Value.Value)
+		}
+	case p.Schema != nil && p.Schema.Value != nil && p.Schema.Value.Example != nil:
+		pm.Example = exampleToString(p.Schema.Value.Example)
+	}
+
 	return pm
 }
 
 func parseRequestBody(rb *openapi3.RequestBody) *registry.RequestBodyMeta {
-	for contentType, mediaType := range rb.Content {
-		if mediaType.Schema == nil || mediaType.Schema.Value == nil {
+	// Sort content-type keys for deterministic selection.
+	contentTypes := make([]string, 0, len(rb.Content))
+	for ct := range rb.Content {
+		contentTypes = append(contentTypes, ct)
+	}
+	sort.Strings(contentTypes)
+
+	for _, contentType := range contentTypes {
+		mediaType := rb.Content[contentType]
+		if mediaType == nil || mediaType.Schema == nil || mediaType.Schema.Value == nil {
 			continue
 		}
-		return &registry.RequestBodyMeta{
+		meta := &registry.RequestBodyMeta{
 			ContentType: contentType,
 			Schema:      convertSchema(mediaType.Schema.Value),
 			Required:    rb.Required,
 			Description: rb.Description,
 		}
+		// Extract example: media-type level first, then named examples.
+		switch {
+		case mediaType.Example != nil:
+			meta.Example = exampleToString(mediaType.Example)
+		case len(mediaType.Examples) > 0:
+			keys := make([]string, 0, len(mediaType.Examples))
+			for k := range mediaType.Examples {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			if ref := mediaType.Examples[keys[0]]; ref != nil && ref.Value != nil {
+				meta.Example = exampleToString(ref.Value.Value)
+			}
+		}
+		return meta
 	}
 	return nil
 }
@@ -405,6 +446,23 @@ func toKebabCase(s string) string {
 		}
 	}
 	return result.String()
+}
+
+// exampleToString converts an OpenAPI example value (any) to a printable string.
+// String values pass through directly; all other types are JSON-marshalled.
+// Returns an empty string if v is nil or marshalling fails.
+func exampleToString(v any) string {
+	if v == nil {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // toExportedName converts an operation ID to an exported Go function name.

@@ -79,7 +79,8 @@
       "WebFetch(domain:api.github.com)",
       "Bash(curl -s \"https://raw.githubusercontent.com/speakeasy-api/openapi/refs/heads/main/overlay/overlay.go\")",
       "Bash(curl -s \"https://raw.githubusercontent.com/speakeasy-api/openapi/refs/heads/main/overlay/apply.go\")",
-      "Bash(curl -s \"https://raw.githubusercontent.com/speakeasy-api/openapi/refs/heads/main/overlay/validate.go\")"
+      "Bash(curl -s \"https://raw.githubusercontent.com/speakeasy-api/openapi/refs/heads/main/overlay/validate.go\")",
+      "Bash(go doc:*)"
     ]
   }
 }

@@ -43,6 +43,7 @@ func TestGoldenFiles(t *testing.T) {
 	goldenFiles := []string{
 		"internal/cli/root.go",
 		"internal/cli/alias.go",
+		"internal/cli/pets.go",
 	}
 
 	for _, relPath := range goldenFiles {

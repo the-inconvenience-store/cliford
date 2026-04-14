@@ -152,6 +152,7 @@ paths:
             type: integer
             default: 20
             maximum: 100
+          example: 10
         - name: status
           in: query
           description: Filter by adoption status
@@ -168,6 +169,7 @@ paths:
           required: false
           schema:
             type: string
+          example: cat
         - name: X-Request-ID
           in: header
           description: Optional request correlation ID
@@ -201,6 +203,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/PetCreate"
+            example:
+              name: Whiskers
+              species: cat
       responses:
         "201":
           description: Pet created successfully

@@ -1167,6 +1167,24 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		sb.Line("		Hidden: true,")
 	}
 
+	// Build Cobra Example: block from parameter and body examples.
+	if len(op.Tags) > 0 {
+		groupName := strings.ToLower(op.Tags[0])
+		cmdPath := groupName + " " + op.CLICommandName
+		var exampleParts []string
+		for _, p := range op.Parameters {
+			if p.Example != "" {
+				exampleParts = append(exampleParts, "--"+p.FlagName+" "+p.Example)
+			}
+		}
+		if op.RequestBody != nil && op.RequestBody.Example != "" {
+			exampleParts = append(exampleParts, "--body '"+op.RequestBody.Example+"'")
+		}
+		if len(exampleParts) > 0 {
+			sb.Linef("		Example: %q,", "  "+cmdPath+" "+strings.Join(exampleParts, " "))
+		}
+	}
+
 	sb.Line("		RunE: func(cmd *cobra.Command, args []string) error {")
 
 	// Prompt for missing required parameters (interactive TTY only)
@@ -1932,6 +1950,9 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 				vals = append(vals, fmt.Sprintf("%v", e))
 			}
 			desc += " (" + strings.Join(vals, ", ") + ")"
+		}
+		if p.Example != "" {
+			desc += " (example: " + p.Example + ")"
 		}
 
 		switch goType {
