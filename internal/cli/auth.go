@@ -165,9 +165,9 @@ func (g *AuthGenerator) Generate() error {
 	for _, s := range g.schemes {
 		if s.Type == registry.SecurityTypeAPIKey {
 			if s.In == registry.ParamLocationHeader {
-				sb.Linef("				cred.HeaderName = %q", s.Name)
+				sb.Linef("				cred.HeaderName = %q", s.ParamName)
 			} else {
-				sb.Linef("				cred.QueryParam = %q", s.Name)
+				sb.Linef("				cred.QueryParam = %q", s.ParamName)
 			}
 			break
 		}

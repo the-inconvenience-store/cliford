@@ -23,12 +23,12 @@ type OperationMeta struct {
 	Deprecated  bool
 
 	// CLI-specific (from config/extensions)
-	CLICommandName string // Derived name after stutter removal
-	CLIAliases     []string
-	CLIGroup       string
-	CLIHidden      bool
-	CLIConfirm     bool
-	CLIConfirmMsg  string
+	CLICommandName         string // Derived name after stutter removal
+	CLIAliases             []string
+	CLIGroup               string
+	CLIHidden              bool
+	CLIConfirm             bool
+	CLIConfirmMsg          string
 	CLIDefaultJQ           string // Default jq expression applied to output (empty = no default)
 	CLIAgentFormat         string // Output format override when --agent is active (empty = use global default)
 	CLIDefaultOutputFormat string // Per-operation default --output-format (empty = global default)
@@ -36,12 +36,12 @@ type OperationMeta struct {
 	CLIWatchEnabled        *bool  // nil = inherit global; set by x-cliford-cli.watch.enabled or cliford.yaml
 	CLIWatchInterval       string // Per-op poll interval override (empty = use global default, e.g. "2s")
 	CLIWatchMaxCount       int    // Per-op max watch iterations (0 = use global default)
-	CLIWaitEnabled        *bool  // nil = auto-detect from CLIWaitCondition; set by x-cliford-wait or cliford.yaml
-	CLIWaitCondition      string // jq success expression (required when --wait used without --wait-for)
-	CLIWaitErrorCondition string // jq expression; exits non-zero immediately if true
-	CLIWaitInterval       string // per-op polling interval (empty = use global default)
-	CLIWaitTimeout        string // per-op max wait duration (empty = use global default)
-	CLIWaitMessage        string // message printed to stderr each non-final iteration in wait-only mode
+	CLIWaitEnabled         *bool  // nil = auto-detect from CLIWaitCondition; set by x-cliford-wait or cliford.yaml
+	CLIWaitCondition       string // jq success expression (required when --wait used without --wait-for)
+	CLIWaitErrorCondition  string // jq expression; exits non-zero immediately if true
+	CLIWaitInterval        string // per-op polling interval (empty = use global default)
+	CLIWaitTimeout         string // per-op max wait duration (empty = use global default)
+	CLIWaitMessage         string // message printed to stderr each non-final iteration in wait-only mode
 
 	// TUI-specific (from config/extensions)
 	TUIDisplay     DisplayMode
@@ -120,8 +120,9 @@ type SecurityRequirement struct {
 type SecurityScheme struct {
 	Name             string
 	Type             SecuritySchemeType // apiKey, http, oauth2, openIdConnect
-	In               ParamLocation     // For apiKey: header, query, cookie
-	Scheme           string            // For http: basic, bearer
+	ParamName        string             // For apiKey: actual header/query/cookie parameter name
+	In               ParamLocation      // For apiKey: header, query, cookie
+	Scheme           string             // For http: basic, bearer
 	BearerFormat     string
 	Flows            *OAuthFlows
 	OpenIDConnectURL string
@@ -131,10 +132,10 @@ type SecurityScheme struct {
 type SecuritySchemeType string
 
 const (
-	SecurityTypeAPIKey         SecuritySchemeType = "apiKey"
-	SecurityTypeHTTP           SecuritySchemeType = "http"
-	SecurityTypeOAuth2         SecuritySchemeType = "oauth2"
-	SecurityTypeOpenIDConnect  SecuritySchemeType = "openIdConnect"
+	SecurityTypeAPIKey        SecuritySchemeType = "apiKey"
+	SecurityTypeHTTP          SecuritySchemeType = "http"
+	SecurityTypeOAuth2        SecuritySchemeType = "oauth2"
+	SecurityTypeOpenIDConnect SecuritySchemeType = "openIdConnect"
 )
 
 // OAuthFlows holds the OAuth 2.0 flow configurations.
@@ -164,13 +165,13 @@ const (
 
 // PaginationConfig describes how a paginated operation should be handled.
 type PaginationConfig struct {
-	Type           PaginationType
-	InputCursor    PaginationInput
-	InputLimit     PaginationInput
-	OutputResults  string // JSONPath to results array
-	OutputNextKey  string // JSONPath to next cursor/page/URL
-	OutputTotal    string // JSONPath to total count (optional)
-	DefaultLimit   int
+	Type          PaginationType
+	InputCursor   PaginationInput
+	InputLimit    PaginationInput
+	OutputResults string // JSONPath to results array
+	OutputNextKey string // JSONPath to next cursor/page/URL
+	OutputTotal   string // JSONPath to total count (optional)
+	DefaultLimit  int
 }
 
 // PaginationType is the pagination strategy.
@@ -186,21 +187,21 @@ const (
 
 // PaginationInput describes a pagination parameter.
 type PaginationInput struct {
-	Name     string
-	In       ParamLocation
-	Default  int
+	Name    string
+	In      ParamLocation
+	Default int
 }
 
 // RetryConfig describes retry behavior for an operation.
 type RetryConfig struct {
-	Enabled              bool
-	Strategy             string // "exponential-backoff"
-	InitialInterval      time.Duration
-	MaxInterval          time.Duration
-	MaxElapsedTime       time.Duration
-	Exponent             float64
-	Jitter               bool
-	StatusCodes          []int
+	Enabled               bool
+	Strategy              string // "exponential-backoff"
+	InitialInterval       time.Duration
+	MaxInterval           time.Duration
+	MaxElapsedTime        time.Duration
+	Exponent              float64
+	Jitter                bool
+	StatusCodes           []int
 	RetryConnectionErrors bool
 }
 

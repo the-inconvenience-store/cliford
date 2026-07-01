@@ -1,0 +1,60 @@
+version: "1"
+spec: ../specs/seerr-api.yml
+app:
+  name: seerr
+  package: github.com/the-inconvenience-store/seerr-cli
+  envvarprefix: SEERR
+  version: 0.1.0
+  description: ""
+generation:
+  mode: hybrid
+  sdk:
+    generator: oapi-codegen
+    outputdir: internal/sdk
+    package: sdk
+  cli:
+    outputdir: internal/cli
+    removestutter: true
+  tui:
+    enabled: false
+    outputdir: internal/tui
+auth:
+  interactive: true
+  keychain: true
+  methods: []
+theme:
+  colors:
+    primary: "#7D56F4"
+    secondary: "#FF6B6B"
+    accent: "#4ECDC4"
+    background: "#1A1A2E"
+    text: "#EAEAEA"
+    dimmed: "#666666"
+    error: "#FF4444"
+    success: "#44FF44"
+    warning: "#FFAA00"
+  borders: rounded
+  spinner: dot
+  table:
+    headerbold: true
+    striperows: true
+  compact: false
+features:
+  pagination: true
+  retries:
+    enabled: true
+    maxattempts: 3
+    initialinterval: 0s
+    maxinterval: 0s
+    maxelapsedtime: 0s
+  customcoderegions: false
+  documentation:
+    markdown: true
+    llmstxt: true
+    manpages: false
+  distribution:
+    goreleaser: true
+    homebrew: false
+operations: {}
+hooks: {}
+globalparams: []

@@ -410,9 +410,9 @@ func (a *AuthEnhancer) generateResolver(authDir string) error {
 		case registry.SecurityTypeAPIKey:
 			method = "apiKey"
 			if s.In == registry.ParamLocationHeader {
-				headerName = name
+				headerName = s.ParamName
 			} else {
-				queryParam = name
+				queryParam = s.ParamName
 			}
 		case registry.SecurityTypeOAuth2:
 			method = "oauth2"

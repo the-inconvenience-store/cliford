@@ -33,24 +33,24 @@ func DefaultSpinnerConfig() SpinnerConfig {
 
 // Generator produces Cobra CLI code from the Operation Registry.
 type Generator struct {
-	engine              *codegen.Engine
-	outputDir           string
-	appName             string
-	pkgPath             string
-	envPrefix           string
-	customCodeRegions   bool
-	generateTUI         bool
-	spinner             SpinnerConfig
-	agentOutputFormat   string              // global default format when --agent is active
-	flagsCfg            config.CLIFlagsConfig // controls which flags are generated
-	requestIDEnabled    bool                // globally enable request ID injection
-	requestIDHeader     string              // HTTP header name for request ID (default: X-Request-ID)
-	watchEnabled        bool                // features.watch.enabled
-	watchInterval       string              // features.watch.defaultInterval (e.g. "5s")
-	watchMaxCount       int                 // features.watch.maxCount (0 = infinite)
-	waitEnabled         bool                // features.wait.enabled
-	waitInterval        string              // features.wait.defaultInterval (e.g. "15s")
-	waitTimeout         string              // features.wait.defaultTimeout ("" = no timeout)
+	engine            *codegen.Engine
+	outputDir         string
+	appName           string
+	pkgPath           string
+	envPrefix         string
+	customCodeRegions bool
+	generateTUI       bool
+	spinner           SpinnerConfig
+	agentOutputFormat string                // global default format when --agent is active
+	flagsCfg          config.CLIFlagsConfig // controls which flags are generated
+	requestIDEnabled  bool                  // globally enable request ID injection
+	requestIDHeader   string                // HTTP header name for request ID (default: X-Request-ID)
+	watchEnabled      bool                  // features.watch.enabled
+	watchInterval     string                // features.watch.defaultInterval (e.g. "5s")
+	watchMaxCount     int                   // features.watch.maxCount (0 = infinite)
+	waitEnabled       bool                  // features.wait.enabled
+	waitInterval      string                // features.wait.defaultInterval (e.g. "15s")
+	waitTimeout       string                // features.wait.defaultTimeout ("" = no timeout)
 }
 
 // NewGenerator creates a CLI generator.
@@ -367,7 +367,7 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 
 	// --server
 	if g.flagsCfg.Server.Enabled {
-		sb.Line(`	pf.StringVar(&serverURL, "server", "", "Override API server URL")`)
+		sb.Linef(`	pf.StringVar(&serverURL, "server", %q, "Override API server URL")`, g.flagsCfg.Server.Default)
 		if g.flagsCfg.Server.Hidden {
 			sb.Line(`	_ = pf.MarkHidden("server")`)
 		}
@@ -1347,7 +1347,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 				sb.Linef("			if !slices.Contains([]string{%s}, %s) {", quoteJoin(sv.Enum), goVar)
 				sb.Linef("				return fmt.Errorf(\"invalid --%s value %%q: allowed values are %v\", %s)", flagName, sv.Enum, goVar)
 				sb.Line("			}")
-		}
+			}
 		}
 		sb.Line("")
 	}

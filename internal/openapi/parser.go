@@ -35,7 +35,12 @@ func (p *Parser) Parse(ctx context.Context) (*registry.Registry, error) {
 		return nil, fmt.Errorf("failed to load OpenAPI spec %s: %w", p.specPath, err)
 	}
 
-	if err := doc.Validate(ctx); err != nil {
+	normalizeDocumentSchemas(doc)
+
+	if err := doc.Validate(ctx,
+		openapi3.DisableExamplesValidation(),
+		openapi3.AllowExtraSiblingFields("nullable"),
+	); err != nil {
 		return nil, fmt.Errorf("OpenAPI spec validation failed: %w", err)
 	}
 
@@ -67,6 +72,133 @@ func (p *Parser) Parse(ctx context.Context) (*registry.Registry, error) {
 	}
 
 	return reg, nil
+}
+
+func normalizeDocumentSchemas(doc *openapi3.T) {
+	seen := make(map[*openapi3.Schema]bool)
+
+	if doc.Components != nil {
+		for _, ref := range doc.Components.Schemas {
+			normalizeSchemaRef(ref, seen)
+		}
+		for _, ref := range doc.Components.Parameters {
+			normalizeParameterRef(ref, seen)
+		}
+		for _, ref := range doc.Components.RequestBodies {
+			normalizeRequestBodyRef(ref, seen)
+		}
+		for _, ref := range doc.Components.Responses {
+			normalizeResponseRef(ref, seen)
+		}
+		for _, ref := range doc.Components.Headers {
+			if ref != nil && ref.Value != nil {
+				normalizeSchemaRef(ref.Value.Schema, seen)
+			}
+		}
+	}
+
+	if doc.Paths == nil {
+		return
+	}
+	for _, item := range doc.Paths.Map() {
+		if item == nil {
+			continue
+		}
+		normalizeParameters(item.Parameters, seen)
+		for _, op := range []*openapi3.Operation{
+			item.Connect, item.Delete, item.Get, item.Head, item.Options,
+			item.Patch, item.Post, item.Put, item.Trace,
+		} {
+			if op == nil {
+				continue
+			}
+			normalizeParameters(op.Parameters, seen)
+			normalizeRequestBodyRef(op.RequestBody, seen)
+			normalizeResponses(op.Responses, seen)
+		}
+	}
+}
+
+func normalizeParameters(params openapi3.Parameters, seen map[*openapi3.Schema]bool) {
+	for _, ref := range params {
+		normalizeParameterRef(ref, seen)
+	}
+}
+
+func normalizeParameterRef(ref *openapi3.ParameterRef, seen map[*openapi3.Schema]bool) {
+	if ref != nil && ref.Value != nil {
+		normalizeSchemaRef(ref.Value.Schema, seen)
+	}
+}
+
+func normalizeRequestBodyRef(ref *openapi3.RequestBodyRef, seen map[*openapi3.Schema]bool) {
+	if ref == nil || ref.Value == nil {
+		return
+	}
+	normalizeContent(ref.Value.Content, seen)
+}
+
+func normalizeResponseRef(ref *openapi3.ResponseRef, seen map[*openapi3.Schema]bool) {
+	if ref == nil || ref.Value == nil {
+		return
+	}
+	normalizeContent(ref.Value.Content, seen)
+	for _, headerRef := range ref.Value.Headers {
+		if headerRef != nil && headerRef.Value != nil {
+			normalizeSchemaRef(headerRef.Value.Schema, seen)
+		}
+	}
+}
+
+func normalizeResponses(responses *openapi3.Responses, seen map[*openapi3.Schema]bool) {
+	if responses == nil {
+		return
+	}
+	for _, ref := range responses.Map() {
+		normalizeResponseRef(ref, seen)
+	}
+}
+
+func normalizeContent(content openapi3.Content, seen map[*openapi3.Schema]bool) {
+	for _, mediaType := range content {
+		if mediaType != nil {
+			normalizeSchemaRef(mediaType.Schema, seen)
+		}
+	}
+}
+
+func normalizeSchemaRef(ref *openapi3.SchemaRef, seen map[*openapi3.Schema]bool) {
+	if ref == nil || ref.Value == nil {
+		return
+	}
+	normalizeSchema(ref.Value, seen)
+}
+
+func normalizeSchema(schema *openapi3.Schema, seen map[*openapi3.Schema]bool) {
+	if schema == nil || seen[schema] {
+		return
+	}
+	seen[schema] = true
+
+	if schema.Type != nil && schema.Type.Is("array") && schema.Items == nil {
+		schema.Items = &openapi3.SchemaRef{Value: &openapi3.Schema{}}
+	}
+
+	normalizeSchemaRef(schema.Items, seen)
+	for _, ref := range schema.Properties {
+		normalizeSchemaRef(ref, seen)
+	}
+	normalizeSchemaRef(schema.AdditionalProperties.Schema, seen)
+	for _, ref := range schema.OneOf {
+		normalizeSchemaRef(ref, seen)
+	}
+	for _, ref := range schema.AnyOf {
+		normalizeSchemaRef(ref, seen)
+	}
+	for _, ref := range schema.AllOf {
+		normalizeSchemaRef(ref, seen)
+	}
+	normalizeSchemaRef(schema.Not, seen)
 }
 
 func parseServers(servers openapi3.Servers) []registry.ServerConfig {
@@ -104,6 +236,7 @@ func parseSecuritySchemes(components *openapi3.Components) map[string]registry.S
 		scheme := registry.SecurityScheme{
 			Name:         name,
 			Type:         registry.SecuritySchemeType(ss.Type),
+			ParamName:    ss.Name,
 			Scheme:       ss.Scheme,
 			BearerFormat: ss.BearerFormat,
 		}
@@ -360,6 +493,10 @@ func parseOperationSecurity(op *openapi3.Operation, doc *openapi3.T) []registry.
 }
 
 func convertSchema(s *openapi3.Schema) registry.SchemaMeta {
+	return convertSchemaSeen(s, make(map[*openapi3.Schema]bool))
+}
+
+func convertSchemaSeen(s *openapi3.Schema, seen map[*openapi3.Schema]bool) registry.SchemaMeta {
 	typeStr := ""
 	if ts := s.Type.Slice(); len(ts) > 0 {
 		typeStr = ts[0]
@@ -372,6 +509,12 @@ func convertSchema(s *openapi3.Schema) registry.SchemaMeta {
 		Required:    s.Required,
 		Description: s.Description,
 	}
+
+	if seen[s] {
+		return sm
+	}
+	seen[s] = true
+	defer delete(seen, s)
 
 	// Check for x-cliford-display extension
 	if ext, ok := s.Extensions["x-cliford-display"]; ok {
@@ -386,7 +529,7 @@ func convertSchema(s *openapi3.Schema) registry.SchemaMeta {
 	}
 
 	if s.Items != nil && s.Items.Value != nil {
-		items := convertSchema(s.Items.Value)
+		items := convertSchemaSeen(s.Items.Value, seen)
 		sm.Items = &items
 	}
 
@@ -394,7 +537,7 @@ func convertSchema(s *openapi3.Schema) registry.SchemaMeta {
 		sm.Properties = make(map[string]registry.SchemaMeta)
 		for name, prop := range s.Properties {
 			if prop.Value != nil {
-				sm.Properties[name] = convertSchema(prop.Value)
+				sm.Properties[name] = convertSchemaSeen(prop.Value, seen)
 			}
 		}
 	}
@@ -423,9 +566,11 @@ func deriveOperationID(method, path string) string {
 	var filtered []string
 	for _, p := range parts {
 		if strings.HasPrefix(p, "{") {
-			continue
+			p = strings.Trim(p, "{}")
 		}
-		filtered = append(filtered, p)
+		if p != "" {
+			filtered = append(filtered, p)
+		}
 	}
 	return strings.ToLower(method) + toExportedName(strings.Join(filtered, "-"))
 }

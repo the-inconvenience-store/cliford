@@ -56,6 +56,13 @@ func GenerateJSONSchema() ([]byte, error) {
 						"properties": map[string]any{
 							"outputDir":     map[string]any{"type": "string", "default": "internal/cli"},
 							"removeStutter": map[string]any{"type": "boolean", "default": true},
+							"flags": map[string]any{
+								"type":        "object",
+								"description": "Generated global CLI flags and defaults",
+								"properties": map[string]any{
+									"server": cliFlagSchema("Default full API server URL for generated --server"),
+								},
+							},
 						},
 					},
 					"tui": map[string]any{
@@ -146,7 +153,7 @@ func GenerateJSONSchema() ([]byte, error) {
 
 func runtimeHookSchema() map[string]any {
 	return map[string]any{
-		"type": "object",
+		"type":     "object",
 		"required": []string{"type"},
 		"properties": map[string]any{
 			"type": map[string]any{
@@ -162,6 +169,18 @@ func runtimeHookSchema() map[string]any {
 				"type":        "string",
 				"description": "Path to go-plugin binary (type: go-plugin)",
 			},
+		},
+	}
+}
+
+func cliFlagSchema(description string) map[string]any {
+	return map[string]any{
+		"type":        "object",
+		"description": description,
+		"properties": map[string]any{
+			"enabled": map[string]any{"type": "boolean", "default": true},
+			"default": map[string]any{"type": "string"},
+			"hidden":  map[string]any{"type": "boolean", "default": false},
 		},
 	}
 }
