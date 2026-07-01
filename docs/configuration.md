@@ -51,6 +51,7 @@ generation:
         hidden: false
       server:
         enabled: true
+        default: ""                       # Optional default for --server (full API base URL)
         hidden: false
       timeout:
         enabled: true
@@ -550,10 +551,12 @@ CLIFORD_GENERATION_MODE=hybrid
 ## Generated app configuration
 
 The apps Cliford generates use Viper for end-user configuration. The config
-file is located at:
+file is located under Go's `os.UserConfigDir()` for the current platform:
 
 ```
-~/.config/<app>/config.yaml
+Linux:   ~/.config/<app>/config.yaml
+macOS:   ~/Library/Application Support/<app>/config.yaml
+Windows: %AppData%\<app>\config.yaml
 ```
 
 ### Resolution order
@@ -567,7 +570,7 @@ file is located at:
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `server_url` | string | (from spec) | Override the API server URL |
+| `server_url` | string | (from spec) | Override the full API server URL |
 | `request_timeout` | duration | `30s` | Global request timeout |
 | `active_profile` | string | `default` | Active auth profile name |
 | `features.retry.enabled` | bool | `true` | Enable/disable automatic retries |
@@ -589,9 +592,19 @@ The server URL can be overridden three ways:
 # Environment variable
 export MYAPP_SERVER_URL=https://staging.api.example.com
 
+# Persisted config
+./myapp config set server_url https://staging.api.example.com
+
 # Config file
 echo "server_url: https://staging.api.example.com" >> ~/.config/myapp/config.yaml
 ```
+
+`server_url` replaces the entire OpenAPI server URL, just like `--server`.
+For a spec whose server is `{server}/api/v1`, set the persisted value to the
+full base URL, such as `https://staging.example.com/api/v1`. The generated
+`config set` command creates the config directory when needed, and
+`config show` displays the stored runtime config. Stored credentials are not
+shown there; use `auth status` for authentication state.
 
 ### Global parameters
 

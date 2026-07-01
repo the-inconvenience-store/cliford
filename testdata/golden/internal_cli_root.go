@@ -398,9 +398,7 @@ func GetAPIClient() *http.Client {
 // SetDefaultServerURL sets the server URL from config/env.
 // This is overridden by the --server CLI flag if provided.
 func SetDefaultServerURL(url string) {
-	if serverURL == "" {
-		serverURL = url
-	}
+	serverURL = url
 }
 
 // VerboseFlag returns a pointer to the verbose/debug mode flag.

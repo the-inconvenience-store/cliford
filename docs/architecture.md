@@ -9,11 +9,15 @@ the different layers work together.
 When you run `cliford generate`, the pipeline executes five stages in order:
 
 1. **Validate**: Parse the OpenAPI spec, build the Operation Registry, check
-   for conflicts.
+   for conflicts. Cliford validates the structural parts needed for
+   generation, while tolerating non-semantic example mismatches commonly found
+   in third-party specs.
 2. **SDK**: Generate typed Go client code via oapi-codegen, plus retry,
    pagination, and error handling helpers.
 3. **CLI**: Generate Cobra commands for each operation, grouped by OpenAPI
-   tag. Generate auth, config, and generate-docs commands.
+   tag. Generate auth, config, and generate-docs commands. If an OpenAPI tag
+   collides with a built-in command name, generate that tag under the `api`
+   namespace so both command surfaces remain available.
 4. **TUI**: Generate Bubbletea views (if enabled), plus the hybrid mode
    adapter for inline prompts.
 5. **Infra**: Generate `main.go`, `go.mod`, config package, and optionally
@@ -30,6 +34,11 @@ as transport layers, not duplicated in each command.
 
 The `http.Client` is assembled by `internal/client/factory.go` and injected
 into the CLI package via `cli.SetAPIClient()`.
+
+The root Cobra command is constructed before runtime `server_url` config is
+applied. This allows persistent flag defaults to be registered first, then
+lets config/env values set the default server while still allowing an explicit
+`--server` flag to win during command parsing.
 
 ## The transport chain
 
@@ -141,6 +150,11 @@ Environment variables follow the pattern `<APP>_<SCHEME>_<TYPE>`:
 
 This convention is deterministic and derived entirely from spec metadata. No
 additional configuration is needed.
+
+For API key schemes, the resolver carries the OpenAPI parameter metadata
+(`name` and `in`) into the credential used by the auth transport. Stored
+profile credentials are also enriched with that metadata when read, so the
+transport can attach the token to the correct header or query parameter.
 
 ## Why a shared client instead of per-command HTTP calls
 

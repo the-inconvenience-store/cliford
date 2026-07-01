@@ -516,7 +516,7 @@ func (r *Resolver) resolveScheme(scheme SchemeConfig) *Credential {
 	}
 
 	// Tier 3: Encrypted file store (profile-based)
-	if cred := r.resolveFromStore(); cred != nil {
+	if cred := r.resolveFromStore(scheme); cred != nil {
 		return cred
 	}
 
@@ -590,12 +590,30 @@ func (r *Resolver) resolveFromKeychain(scheme SchemeConfig) *Credential {
 	return nil
 }
 
-func (r *Resolver) resolveFromStore() *Credential {
+func (r *Resolver) resolveFromStore(scheme SchemeConfig) *Credential {
 	cred, err := r.store.GetActive()
 	if err != nil {
 		return nil
 	}
+	r.applySchemeDefaults(cred, scheme)
 	return cred
+}
+
+func (r *Resolver) applySchemeDefaults(cred *Credential, scheme SchemeConfig) {
+	if cred == nil {
+		return
+	}
+	if cred.Method == "" {
+		cred.Method = scheme.Type
+	}
+	if cred.Method == "apiKey" {
+		if cred.HeaderName == "" {
+			cred.HeaderName = scheme.HeaderName
+		}
+		if cred.QueryParam == "" {
+			cred.QueryParam = scheme.QueryParam
+		}
+	}
 }
 
 func (r *Resolver) resolveFromConfig(scheme SchemeConfig) *Credential {

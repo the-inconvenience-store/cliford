@@ -14,6 +14,9 @@ management.
 | OAuth 2.0 Client Credentials | `oauth2` (clientCredentials) | `Authorization: Bearer <token>` |
 
 Methods are detected automatically from your OpenAPI spec's `securitySchemes`.
+For API keys, Cliford uses the exact OpenAPI `name` and `in` fields, so a
+header scheme such as `name: X-Api-Key` sends `X-Api-Key: <token>`, while a
+query scheme sends the token as that query parameter.
 
 ## Credential resolution order
 
@@ -93,6 +96,10 @@ export PETSTORE_BASICAUTH_PASSWORD="secret"
 Credentials stored via `auth login` are saved to the OS keychain when
 available, falling back to an encrypted file. A warning is printed when the
 encrypted file fallback is used.
+
+Authentication state is stored separately from general runtime config, so
+`config show` does not print API keys or tokens. Use `auth status` to confirm
+the active profile and auth method; secrets are redacted in that output.
 
 ## How to set up OAuth 2.0
 

@@ -11,12 +11,12 @@ import (
 	"github.com/itchyny/gojq"
 
 	"github.com/the-inconvenience-store/cliford/internal/cli"
-	"github.com/the-inconvenience-store/cliford/internal/config"
-	"github.com/the-inconvenience-store/cliford/internal/overlay"
 	"github.com/the-inconvenience-store/cliford/internal/codegen"
+	"github.com/the-inconvenience-store/cliford/internal/config"
 	"github.com/the-inconvenience-store/cliford/internal/distribution"
 	"github.com/the-inconvenience-store/cliford/internal/docs"
 	"github.com/the-inconvenience-store/cliford/internal/hybrid"
+	"github.com/the-inconvenience-store/cliford/internal/overlay"
 	"github.com/the-inconvenience-store/cliford/internal/sdk"
 	appTui "github.com/the-inconvenience-store/cliford/internal/tui"
 	"github.com/the-inconvenience-store/cliford/pkg/registry"
@@ -124,7 +124,7 @@ type Config struct {
 	OperationRequestIDOverrides map[string]bool
 
 	// Watch feature config
-	WatchEnabled bool   // features.watch.enabled
+	WatchEnabled  bool   // features.watch.enabled
 	WatchInterval string // features.watch.defaultInterval (e.g. "5s")
 	WatchMaxCount int    // features.watch.maxCount (0 = infinite)
 
@@ -692,6 +692,8 @@ func main() {
 	// Expand any user-defined alias before Cobra parses the command tree.
 	os.Args = cli.ResolveAliases(os.Args)
 
+	rootCmd := cli.RootCmd("%s", fmt.Sprintf("%%s (commit: %%s, built: %%s)", version, commit, date))
+
 	// Create the shared HTTP client with auth and retry transport layers.
 	// This is the SDK-first architecture: all commands share a single,
 	// pre-configured client with 5-tier credential resolution:
@@ -730,12 +732,12 @@ func main() {
 		cli.SetDefaultServerURL(serverOverride)
 	}
 
-	rootCmd := cli.RootCmd("%s", fmt.Sprintf("%%s (commit: %%s, built: %%s)", version, commit, date))
 	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
-`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, hooksImport, p.Config.PackageName, p.Config.PackageName, p.Config.AppName, p.Config.AppName, p.Config.EnvVarPrefix, p.Config.AppName, oauthBlock, hooksBlock, p.Config.AppName)
+`, p.Config.PackageName, p.Config.PackageName, p.Config.PackageName, hooksImport, p.Config.PackageName, p.Config.PackageName, p.Config.AppName, p.Config.AppName, p.Config.EnvVarPrefix, p.Config.AppName, p.Config.AppName, oauthBlock, hooksBlock)
 
 	cmdDir := filepath.Join(p.Config.OutputDir, "cmd", p.Config.AppName)
 	if err := os.MkdirAll(cmdDir, 0o755); err != nil {

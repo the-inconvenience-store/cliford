@@ -169,22 +169,24 @@ func (g *Generator) Generate(reg *registry.Registry) error {
 		return fmt.Errorf("create CLI dir: %w", err)
 	}
 
+	groups := resolveCommandGroups(reg.TagGroups)
+
 	// Generate root command with all global flags
-	if err := g.generateRoot(reg, cliDir); err != nil {
+	if err := g.generateRoot(reg, cliDir, groups); err != nil {
 		return fmt.Errorf("generate root: %w", err)
 	}
 
 	// Generate one file per tag group with operation commands
-	for tag, ops := range reg.TagGroups {
-		if err := g.generateGroup(tag, ops, reg, cliDir); err != nil {
-			return fmt.Errorf("generate group %s: %w", tag, err)
+	for _, group := range groups {
+		if err := g.generateGroup(group, reg, cliDir); err != nil {
+			return fmt.Errorf("generate group %s: %w", group.Tag, err)
 		}
 	}
 
 	return nil
 }
 
-func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
+func (g *Generator) generateRoot(reg *registry.Registry, cliDir string, groups []commandGroup) error {
 	// Determine whether any operation needs the generateRequestID() helper.
 	needsRequestID := g.requestIDEnabled
 	if !needsRequestID {
@@ -470,14 +472,16 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("	_ = pf")
 	sb.Line("")
 
-	// Sort tags for deterministic output
-	var sortedTags []string
-	for tag := range reg.TagGroups {
-		sortedTags = append(sortedTags, tag)
+	var apiGroups []commandGroup
+	for _, group := range groups {
+		if group.Namespaced {
+			apiGroups = append(apiGroups, group)
+			continue
+		}
+		sb.Linef("	root.AddCommand(%sCmd())", group.FuncPrefix)
 	}
-	sort.Strings(sortedTags)
-	for _, tag := range sortedTags {
-		sb.Linef("	root.AddCommand(%sCmd())", toCamelCase(tag))
+	if len(apiGroups) > 0 {
+		sb.Line("	root.AddCommand(apiCmd())")
 	}
 	sb.Line("	root.AddCommand(authCmd())")
 	sb.Line("	root.AddCommand(configCmd())")
@@ -507,6 +511,21 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("	return root")
 	sb.Line("}")
 	sb.Line("")
+
+	if len(apiGroups) > 0 {
+		sb.Line("// apiCmd groups OpenAPI tags whose names conflict with Cliford built-in commands.")
+		sb.Line("func apiCmd() *cobra.Command {")
+		sb.Line("	api := &cobra.Command{")
+		sb.Line(`		Use:   "api",`)
+		sb.Line(`		Short: "API operation commands",`)
+		sb.Line("	}")
+		for _, group := range apiGroups {
+			sb.Linef("	api.AddCommand(%sCmd())", group.FuncPrefix)
+		}
+		sb.Line("	return api")
+		sb.Line("}")
+		sb.Line("")
+	}
 
 	// FormatOutput helper
 	sb.Line("// FormatOutput renders data in the requested output format.")
@@ -843,9 +862,7 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	sb.Line("// SetDefaultServerURL sets the server URL from config/env.")
 	sb.Line("// This is overridden by the --server CLI flag if provided.")
 	sb.Line("func SetDefaultServerURL(url string) {")
-	sb.Line("	if serverURL == \"\" {")
-	sb.Line("		serverURL = url")
-	sb.Line("	}")
+	sb.Line("	serverURL = url")
 	sb.Line("}")
 	sb.Line("")
 	sb.Line("// VerboseFlag returns a pointer to the verbose/debug mode flag.")
@@ -999,7 +1016,50 @@ func (g *Generator) generateRoot(reg *registry.Registry, cliDir string) error {
 	return writeFormatted(filepath.Join(cliDir, "root.go"), sb.String())
 }
 
-func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg *registry.Registry, cliDir string) error {
+type commandGroup struct {
+	Tag         string
+	CommandName string
+	FuncPrefix  string
+	FileBase    string
+	CommandPath string
+	Namespaced  bool
+	Ops         []registry.OperationMeta
+}
+
+func resolveCommandGroups(tagGroups map[string][]registry.OperationMeta) []commandGroup {
+	tags := sortedStringKeys(tagGroups)
+	groups := make([]commandGroup, 0, len(tags))
+	for _, tag := range tags {
+		commandName := strings.ToLower(tag)
+		group := commandGroup{
+			Tag:         tag,
+			CommandName: commandName,
+			FuncPrefix:  toCamelCase(tag),
+			FileBase:    toSnakeCase(tag),
+			CommandPath: commandName,
+			Ops:         tagGroups[tag],
+		}
+		if isReservedRootCommand(commandName) {
+			group.Namespaced = true
+			group.FuncPrefix = "api" + toPascalCase(tag)
+			group.FileBase = "api_" + toSnakeCase(tag)
+			group.CommandPath = "api " + commandName
+		}
+		groups = append(groups, group)
+	}
+	return groups
+}
+
+func isReservedRootCommand(name string) bool {
+	switch strings.ToLower(name) {
+	case "auth", "config", "alias", "completion", "generate-docs", "help":
+		return true
+	default:
+		return false
+	}
+}
+
+func (g *Generator) generateGroup(group commandGroup, reg *registry.Registry, cliDir string) error {
 	// Determine which imports are needed
 	needsBytes := false
 	needsContext := false
@@ -1008,7 +1068,7 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 	if needsSDK {
 		needsTime = true // time.ParseDuration used in retry override block
 	}
-	for _, op := range ops {
+	for _, op := range group.Ops {
 		if op.RequestBody != nil {
 			needsBytes = true
 		}
@@ -1073,14 +1133,14 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 	sb.Line("")
 
 	// Tag group command
-	tagPrefix := toCamelCase(tag)
+	tagPrefix := group.FuncPrefix
 	sb.Linef("func %sCmd() *cobra.Command {", tagPrefix)
 	sb.Line("	cmd := &cobra.Command{")
-	sb.Linef("		Use:   %q,", strings.ToLower(tag))
-	sb.Linef("		Short: %q,", tag+" operations")
+	sb.Linef("		Use:   %q,", group.CommandName)
+	sb.Linef("		Short: %q,", group.Tag+" operations")
 	sb.Line("	}")
 	sb.Line("")
-	for _, op := range ops {
+	for _, op := range group.Ops {
 		sb.Linef("	cmd.AddCommand(%s%sCmd())", tagPrefix, toPascalCase(op.CLICommandName))
 	}
 	sb.Line("")
@@ -1089,14 +1149,14 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 	sb.Line("")
 
 	// Each operation command - prefixed with tag name to avoid collisions
-	for _, op := range ops {
-		g.generateOperationCmd(&sb, op, reg, tagPrefix)
+	for _, op := range group.Ops {
+		g.generateOperationCmd(&sb, op, reg, tagPrefix, group.CommandPath)
 	}
 
-	return writeFormatted(filepath.Join(cliDir, toSnakeCase(tag)+".go"), sb.String())
+	return writeFormatted(filepath.Join(cliDir, group.FileBase+".go"), sb.String())
 }
 
-func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.OperationMeta, reg *registry.Registry, tagPrefix string) {
+func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.OperationMeta, reg *registry.Registry, tagPrefix, commandPath string) {
 	funcName := tagPrefix + toPascalCase(op.CLICommandName)
 	params := disambiguateParamFlagNames(op.Parameters)
 
@@ -1169,9 +1229,8 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	}
 
 	// Build Cobra Example: block from parameter and body examples.
-	if len(op.Tags) > 0 {
-		groupName := strings.ToLower(op.Tags[0])
-		cmdPath := groupName + " " + op.CLICommandName
+	if commandPath != "" {
+		cmdPath := commandPath + " " + op.CLICommandName
 		var exampleParts []string
 		for _, p := range params {
 			if p.Example != "" {

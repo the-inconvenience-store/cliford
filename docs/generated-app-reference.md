@@ -10,6 +10,7 @@ Every generated app includes these commands:
 ```
 <app>
   <tag> <operation>          # One command per OpenAPI operation, grouped by tag
+  api <tag> <operation>      # OpenAPI tags that conflict with built-in commands
   alias
     set <name> <expansion>   # Define or update an alias
     delete <name>            # Remove an alias
@@ -27,6 +28,23 @@ Every generated app includes these commands:
   generate-docs              # Generate man pages or Markdown documentation
   completion                 # Generate shell completions (bash, zsh, fish)
 ```
+
+### Built-in command collisions
+
+Cliford reserves root command names for generated app controls such as
+`auth`, `config`, `alias`, `generate-docs`, `completion`, and `help`. If an
+OpenAPI tag uses one of those names, Cliford keeps the built-in command at
+the root and moves the API tag under the `api` namespace.
+
+For example, a spec with an `auth` tag generates:
+
+```bash
+myapp auth login              # Cliford credential management
+myapp api auth get-auth-me    # OpenAPI operation tagged "auth"
+```
+
+Only conflicting tags are namespaced. Non-conflicting tags remain at the
+root, such as `myapp pets list`.
 
 ## Global flags
 
@@ -108,6 +126,11 @@ substitution is skipped:
 ./myapp items list --server https://dev.example.com
 ```
 
+The persisted `server_url` config key has the same semantics as `--server`:
+it replaces the entire OpenAPI server URL. If your spec server is
+`{server}/api/v1`, set `server_url` to the full base URL, for example
+`https://dev.example.com/api/v1`.
+
 If a variable defines `enum` values, passing an invalid value returns an
 error before the request is made:
 
@@ -148,6 +171,14 @@ property flag is prefixed with `body-`. For example, if both a path parameter
 
 The `--body` flag itself is also reserved and cannot collide with body
 property names.
+
+If an operation defines two parameters with the same flag name, Cliford keeps
+the first flag name and prefixes later duplicates with the parameter
+location. For example, if an operation has both a path parameter named
+`language` and a query parameter named `language`, the generated flags are:
+
+- `--language` for the path parameter
+- `--query-language` for the query parameter
 
 ## Pagination flags
 
@@ -277,6 +308,7 @@ frames: ["·", "✻", "✽", "✶", "✳", "✢"]
     cli/
       root.go                      # Root command, global flags, FormatOutput, table renderer
       <tag>.go                     # One file per OpenAPI tag with operation commands
+      api_<tag>.go                 # Namespaced OpenAPI tag when <tag> conflicts with a built-in command
       alias.go                     # Alias set/delete/list commands and ResolveAliases
       auth.go                      # Auth login/logout/status/switch commands
       config_cmd.go                # Config show/set/get commands

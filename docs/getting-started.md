@@ -85,7 +85,9 @@ go build -o petstore ./cmd/petstore/
 
 You will see all your API operations organized as CLI commands grouped by
 OpenAPI tag. The output also includes `auth`, `config`, `generate-docs`, and
-`completion` commands.
+`completion` commands. If an OpenAPI tag has the same name as one of those
+built-in commands, its API operations are placed under `api <tag>` so both
+surfaces remain available.
 
 ```bash
 ./petstore pets --help
