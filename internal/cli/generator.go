@@ -1098,6 +1098,7 @@ func (g *Generator) generateGroup(tag string, ops []registry.OperationMeta, reg 
 
 func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.OperationMeta, reg *registry.Registry, tagPrefix string) {
 	funcName := tagPrefix + toPascalCase(op.CLICommandName)
+	params := disambiguateParamFlagNames(op.Parameters)
 
 	// Determine effective agent output format for this operation.
 	// Per-operation CLIAgentFormat (from x-cliford-cli or cliford.yaml operations) takes
@@ -1117,7 +1118,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 
 	// Build existing param flag name set for collision detection
 	existingParamFlags := make(map[string]bool)
-	for _, p := range op.Parameters {
+	for _, p := range params {
 		existingParamFlags[p.FlagName] = true
 	}
 	// Also reserve "body" flag name to avoid collision with --body JSON flag
@@ -1137,7 +1138,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Linef("func %sCmd() *cobra.Command {", funcName)
 
 	// Flag variables for path/query/header params
-	for _, p := range op.Parameters {
+	for _, p := range params {
 		goType := flagGoType(p.Schema)
 		sb.Linef("	var flag%s %s", toPascalCase(p.FlagName), goType)
 	}
@@ -1172,7 +1173,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 		groupName := strings.ToLower(op.Tags[0])
 		cmdPath := groupName + " " + op.CLICommandName
 		var exampleParts []string
-		for _, p := range op.Parameters {
+		for _, p := range params {
 			if p.Example != "" {
 				exampleParts = append(exampleParts, "--"+p.FlagName+" "+p.Example)
 			}
@@ -1189,7 +1190,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 
 	// Prompt for missing required parameters (interactive TTY only)
 	requiredParams := []registry.ParamMeta{}
-	for _, p := range op.Parameters {
+	for _, p := range params {
 		if p.Required {
 			requiredParams = append(requiredParams, p)
 		}
@@ -1354,7 +1355,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 
 	// Build path with parameter substitution
 	sb.Linef("			reqPath := %q", op.Path)
-	for _, p := range op.Parameters {
+	for _, p := range params {
 		if p.In == registry.ParamLocationPath {
 			sb.Linef(`			reqPath = strings.Replace(reqPath, "{%s}", fmt.Sprintf("%%v", flag%s), 1)`, p.Name, toPascalCase(p.FlagName))
 		}
@@ -1369,7 +1370,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 
 	// Query parameters
 	hasQuery := false
-	for _, p := range op.Parameters {
+	for _, p := range params {
 		if p.In == registry.ParamLocationQuery {
 			hasQuery = true
 			break
@@ -1377,7 +1378,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	}
 	if hasQuery {
 		sb.Line("			q := reqURL.Query()")
-		for _, p := range op.Parameters {
+		for _, p := range params {
 			if p.In != registry.ParamLocationQuery {
 				continue
 			}
@@ -1523,7 +1524,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Line("			}")
 
 	// Header parameters
-	for _, p := range op.Parameters {
+	for _, p := range params {
 		if p.In == registry.ParamLocationHeader {
 			flagVar := "flag" + toPascalCase(p.FlagName)
 			sb.Linef("			if %s != \"\" {", flagVar)
@@ -1940,7 +1941,7 @@ func (g *Generator) generateOperationCmd(sb *StringBuilder, op registry.Operatio
 	sb.Line("")
 
 	// Register path/query/header flags
-	for _, p := range op.Parameters {
+	for _, p := range params {
 		goType := flagGoType(p.Schema)
 		flagVar := "flag" + toPascalCase(p.FlagName)
 		desc := p.Description
@@ -2184,6 +2185,24 @@ func flagGoType(s registry.SchemaMeta) string {
 	default:
 		return "string"
 	}
+}
+
+func disambiguateParamFlagNames(params []registry.ParamMeta) []registry.ParamMeta {
+	result := make([]registry.ParamMeta, len(params))
+	seen := make(map[string]int, len(params))
+	for i, p := range params {
+		result[i] = p
+		name := p.FlagName
+		if seen[name] > 0 {
+			name = string(p.In) + "-" + p.FlagName
+			if seen[name] > 0 {
+				name = fmt.Sprintf("%s-%d", name, seen[name]+1)
+			}
+			result[i].FlagName = name
+		}
+		seen[name]++
+	}
+	return result
 }
 
 func quoteJoin(ss []string) string {
