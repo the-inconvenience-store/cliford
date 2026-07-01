@@ -4,12 +4,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	cliford "github.com/the-inconvenience-store/cliford"
 	"github.com/the-inconvenience-store/cliford/internal/codegen"
 	"github.com/the-inconvenience-store/cliford/internal/config"
 	"github.com/the-inconvenience-store/cliford/internal/overlay"
@@ -57,8 +60,75 @@ that are themselves configurable by their end users.`,
 	root.AddCommand(diffCmd())
 	root.AddCommand(versionBumpCmd())
 	root.AddCommand(doctorCmd())
+	root.AddCommand(docsCmd())
 
 	return root
+}
+
+func docsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "docs [topic]",
+		Short: "Read Cliford's documentation",
+		Long: `Display Cliford's built-in documentation.
+
+Run without a topic to list all available topics, or pass a topic name
+(for example 'cliford docs getting-started') to print that document.`,
+		Args: cobra.MaximumNArgs(1),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			topics, err := docTopics()
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return topics, cobra.ShellCompDirectiveNoFileComp
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			topics, err := docTopics()
+			if err != nil {
+				return err
+			}
+
+			if len(args) == 0 {
+				fmt.Println("Cliford documentation topics:")
+				fmt.Println()
+				for _, t := range topics {
+					fmt.Printf("  %s\n", t)
+				}
+				fmt.Println()
+				fmt.Println("Run 'cliford docs <topic>' to read a topic.")
+				return nil
+			}
+
+			topic := strings.TrimSuffix(args[0], ".md")
+			content, err := cliford.DocsFS.ReadFile("docs/" + topic + ".md")
+			if err != nil {
+				return fmt.Errorf("unknown topic %q; run 'cliford docs' to list available topics", topic)
+			}
+			fmt.Print(string(content))
+			return nil
+		},
+	}
+	return cmd
+}
+
+// docTopics returns the sorted list of embedded documentation topic names
+// (file names without the .md extension).
+func docTopics() ([]string, error) {
+	entries, err := fs.ReadDir(cliford.DocsFS, "docs")
+	if err != nil {
+		return nil, err
+	}
+	var topics []string
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasSuffix(name, ".md") {
+			topics = append(topics, strings.TrimSuffix(name, ".md"))
+		}
+	}
+	sort.Strings(topics)
+	return topics, nil
 }
 
 func generateCmd() *cobra.Command {
